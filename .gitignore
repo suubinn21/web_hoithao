@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+frontend-src/node_modules/
+
+# Next.js dev/build cache
+frontend-src/.next/
+frontend-src/out/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs & OS files
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
