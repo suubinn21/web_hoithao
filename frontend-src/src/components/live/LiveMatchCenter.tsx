@@ -220,11 +220,11 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
-            ...m,
-            status: 'HALFTIME' as const,
-            half: 2 as const,
-            currentMinute: halfDurationMinutes,
-          }
+          ...m,
+          status: 'HALFTIME' as const,
+          half: 2 as const,
+          currentMinute: halfDurationMinutes,
+        }
         : m
     );
     onMatchesUpdate(updated);
@@ -256,12 +256,12 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
-            ...m,
-            status: 'FINISHED' as const,
-            currentMinute: isSetSport ? Math.floor(seconds / 60) : matchDurationMinutes,
-            ...(computedWinnerId ? { winnerTeamId: computedWinnerId } : {}),
-            completedAt: new Date().toISOString(),
-          }
+          ...m,
+          status: 'FINISHED' as const,
+          currentMinute: isSetSport ? Math.floor(seconds / 60) : matchDurationMinutes,
+          ...(computedWinnerId ? { winnerTeamId: computedWinnerId } : {}),
+          completedAt: new Date().toISOString(),
+        }
         : m
     );
 
@@ -284,7 +284,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     StorageService.logAction(
       currentRole,
       currentRole,
-      'KẾT THÚC TRẬN ĐẤU (FULL TIME)',
+      'KẾT THÚC TRẬN ĐẤU',
       activeMatch.roundLabel,
       `Tỷ số chung cuộc: ${homeTeam?.name} ${activeMatch.homeScore} - ${activeMatch.awayScore} ${awayTeam?.name}${setsCompact ? ` (${setsCompact})` : ''}.`
     );
@@ -334,14 +334,14 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
-            ...m,
-            status: m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
-            homeScore: summary.homeSetsWon,
-            awayScore: summary.awaySetsWon,
-            sets: summary.normalizedSets,
-            currentSet: setNum,
-            winnerTeamId: nextWinnerId,
-          }
+          ...m,
+          status: m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
+          homeScore: summary.homeSetsWon,
+          awayScore: summary.awaySetsWon,
+          sets: summary.normalizedSets,
+          currentSet: setNum,
+          winnerTeamId: nextWinnerId,
+        }
         : m
     );
     onMatchesUpdate(updated);
@@ -385,20 +385,20 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
-            ...m,
-            status: 'LIVE' as const,
-            homeScore: summary.homeSetsWon,
-            awayScore: summary.awaySetsWon,
-            sets: summary.normalizedSets,
-            currentSet: hasMatchWinner ? activeSetNum : nextSet,
-            winnerTeamId:
-              summary.homeSetsWon >= setsToWin
-                ? activeMatch.homeTeamId
-                : summary.awaySetsWon >= setsToWin
-                  ? activeMatch.awayTeamId
-                  : undefined,
-            events: [...m.events, setEvent],
-          }
+          ...m,
+          status: 'LIVE' as const,
+          homeScore: summary.homeSetsWon,
+          awayScore: summary.awaySetsWon,
+          sets: summary.normalizedSets,
+          currentSet: hasMatchWinner ? activeSetNum : nextSet,
+          winnerTeamId:
+            summary.homeSetsWon >= setsToWin
+              ? activeMatch.homeTeamId
+              : summary.awaySetsWon >= setsToWin
+                ? activeMatch.awayTeamId
+                : undefined,
+          events: [...m.events, setEvent],
+        }
         : m
     );
     onMatchesUpdate(updated);
@@ -459,15 +459,15 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
-            ...m,
-            homeScore: summary.homeSetsWon,
-            awayScore: summary.awaySetsWon,
-            sets: summary.normalizedSets,
-            currentSet: Math.min(setConfig.bestOf, Math.max(1, summary.normalizedSets.length)),
-            winnerTeamId: winnerId,
-            status: shouldFinish ? ('FINISHED' as const) : m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
-            ...(shouldFinish ? { completedAt: new Date().toISOString() } : {}),
-          }
+          ...m,
+          homeScore: summary.homeSetsWon,
+          awayScore: summary.awaySetsWon,
+          sets: summary.normalizedSets,
+          currentSet: Math.min(setConfig.bestOf, Math.max(1, summary.normalizedSets.length)),
+          winnerTeamId: winnerId,
+          status: shouldFinish ? ('FINISHED' as const) : m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
+          ...(shouldFinish ? { completedAt: new Date().toISOString() } : {}),
+        }
         : m
     );
 
@@ -502,12 +502,12 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
-            ...m,
-            durationMinutes: validDuration,
-            breakDurationMinutes: validBreak,
-            currentMinute: validMinute,
-            half: (validMinute > Math.floor(validDuration / 2) ? 2 : 1) as 1 | 2,
-          }
+          ...m,
+          durationMinutes: validDuration,
+          breakDurationMinutes: validBreak,
+          currentMinute: validMinute,
+          half: (validMinute > Math.floor(validDuration / 2) ? 2 : 1) as 1 | 2,
+        }
         : m
     );
     onMatchesUpdate(updated);
@@ -534,11 +534,11 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const forfeitWinScore = isSetSport ? setsToWin : 3;
     const forfeitSets: MatchSetScore[] | undefined = isSetSport
       ? Array.from({ length: setsToWin }, (_, i) => ({
-          setNumber: i + 1,
-          homePoints: isHomeForfeit ? 0 : setConfig.pointsPerSet,
-          awayPoints: isHomeForfeit ? setConfig.pointsPerSet : 0,
-          winner: (isHomeForfeit ? 'AWAY' : 'HOME') as 'HOME' | 'AWAY',
-        }))
+        setNumber: i + 1,
+        homePoints: isHomeForfeit ? 0 : setConfig.pointsPerSet,
+        awayPoints: isHomeForfeit ? setConfig.pointsPerSet : 0,
+        winner: (isHomeForfeit ? 'AWAY' : 'HOME') as 'HOME' | 'AWAY',
+      }))
       : undefined;
 
     const noteEvent: MatchEvent = {
@@ -554,19 +554,19 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
-            ...m,
-            status: 'FINISHED' as const,
-            homeScore: isHomeForfeit ? 0 : forfeitWinScore,
-            awayScore: isHomeForfeit ? forfeitWinScore : 0,
-            ...(forfeitSets ? { sets: forfeitSets } : {}),
-            currentMinute: isSetSport ? Math.floor(seconds / 60) : matchDurationMinutes,
-            winnerTeamId: winningTeam?.id,
-            isForfeit: true,
-            forfeitedTeamId: forfeitTeamId,
-            forfeitReason: forfeitReason.trim() || 'Vi phạm quy chế thời gian / bỏ cuộc',
-            completedAt: new Date().toISOString(),
-            events: [...m.events, noteEvent],
-          }
+          ...m,
+          status: 'FINISHED' as const,
+          homeScore: isHomeForfeit ? 0 : forfeitWinScore,
+          awayScore: isHomeForfeit ? forfeitWinScore : 0,
+          ...(forfeitSets ? { sets: forfeitSets } : {}),
+          currentMinute: isSetSport ? Math.floor(seconds / 60) : matchDurationMinutes,
+          winnerTeamId: winningTeam?.id,
+          isForfeit: true,
+          forfeitedTeamId: forfeitTeamId,
+          forfeitReason: forfeitReason.trim() || 'Vi phạm quy chế thời gian / bỏ cuộc',
+          completedAt: new Date().toISOString(),
+          events: [...m.events, noteEvent],
+        }
         : m
     );
 
@@ -616,11 +616,11 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
-            ...m,
-            homeScore: newHomeScore,
-            awayScore: newAwayScore,
-            events: [...m.events, newEvent],
-          }
+          ...m,
+          homeScore: newHomeScore,
+          awayScore: newAwayScore,
+          events: [...m.events, newEvent],
+        }
         : m
     );
 
@@ -846,11 +846,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
             <button
               key={m.id}
               onClick={() => setActiveMatchId(m.id)}
-              className={`flex-shrink-0 px-3.5 py-2.5 rounded-xl border text-xs text-left transition-all cursor-pointer ${
-                isSelected
+              className={`flex-shrink-0 px-3.5 py-2.5 rounded-xl border text-xs text-left transition-all cursor-pointer ${isSelected
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-700 border-2 border-emerald-300 shadow-lg shadow-emerald-500/30 text-white font-black scale-[1.02]'
                   : 'bg-slate-900/90 border border-slate-700/80 text-slate-200 hover:bg-slate-800 hover:text-white hover:border-emerald-500/50 shadow-sm'
-              }`}
+                }`}
             >
               <div className="flex items-center justify-between gap-2 text-[10px] text-slate-300 mb-1">
                 <div className="flex items-center gap-1">
@@ -891,12 +890,12 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
       {/* Main Stadium Live Scoreboard Card */}
       <div className="relative rounded-3xl overflow-hidden border border-blue-500/40 shadow-xl bg-[#0B1A30]">
         {/* Stadium Action Photo Overlay with balanced floodlights */}
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20 transform scale-105 pointer-events-none mix-blend-luminosity"
           style={{ backgroundImage: `url('/images/tournament-hero.jpg')` }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-[#071526]/95 via-[#06101c]/92 to-[#030810]/98 pointer-events-none" />
-        
+
         {/* Stadium lighting glow overlays */}
         <div className="absolute top-0 left-1/4 right-1/4 h-32 bg-sky-500/25 blur-3xl pointer-events-none"></div>
         <div className="absolute -top-10 left-10 w-48 h-48 bg-cyan-500/15 blur-3xl pointer-events-none"></div>
@@ -972,20 +971,20 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         {/* Score & Teams Display - Balanced 12-Column Full Width Broadcast Layout */}
         <div className="px-4 py-8 sm:px-10 sm:py-12 relative z-10">
           <div className="grid grid-cols-1 md:grid-cols-12 items-center gap-6 lg:gap-8">
-            
+
             {/* Home Team (5 columns on desktop, text-right) */}
             <div className="col-span-1 md:col-span-5 flex flex-col items-center md:items-end text-center md:text-right">
               {/* Crest with glowing ring */}
               <div className="relative group mb-3">
-                <div 
+                <div
                   className="absolute -inset-1 rounded-3xl blur-lg opacity-80 group-hover:opacity-100 transition duration-300"
                   style={{ backgroundColor: homeTeam?.primaryColor || '#1e3a8a' }}
                 />
-                <div 
+                <div
                   className="relative w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl flex items-center justify-center text-3xl sm:text-5xl font-extrabold shadow-2xl border-2 border-white/50"
-                  style={{ 
-                    background: `linear-gradient(135deg, ${homeTeam?.primaryColor || '#1e3a8a'} 0%, #08111e 100%)`, 
-                    borderColor: homeTeam?.secondaryColor || '#34d399' 
+                  style={{
+                    background: `linear-gradient(135deg, ${homeTeam?.primaryColor || '#1e3a8a'} 0%, #08111e 100%)`,
+                    borderColor: homeTeam?.secondaryColor || '#34d399'
                   }}
                 >
                   <span className="drop-shadow-lg transform group-hover:scale-110 transition-transform">{sportMeta.icon}</span>
@@ -1015,7 +1014,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
 
             {/* Score & Live Clock Center (2 columns on desktop, perfectly centered) */}
             <div className="col-span-1 md:col-span-2 flex flex-col items-center justify-center my-4 md:my-0">
-              
+
               {/* Live Digital Clock Badge */}
               <div className="relative mb-2 group">
                 <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 opacity-70 blur-md group-hover:opacity-100 transition duration-300"></div>
@@ -1068,11 +1067,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                   {activeMatch.sets.map((s) => (
                     <span
                       key={s.setNumber}
-                      className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border ${
-                        s.setNumber === activeSetNum && activeMatch.status !== 'FINISHED'
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border ${s.setNumber === activeSetNum && activeMatch.status !== 'FINISHED'
                           ? 'bg-emerald-500/25 border-emerald-300 text-emerald-200'
                           : 'bg-slate-900/80 border-slate-600 text-slate-200'
-                      }`}
+                        }`}
                     >
                       Set {s.setNumber}: {s.homePoints}-{s.awayPoints}
                     </span>
@@ -1093,15 +1091,15 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
             <div className="col-span-1 md:col-span-5 flex flex-col items-center md:items-start text-center md:text-left">
               {/* Crest with glowing ring */}
               <div className="relative group mb-3">
-                <div 
+                <div
                   className="absolute -inset-1 rounded-3xl blur-lg opacity-80 group-hover:opacity-100 transition duration-300"
                   style={{ backgroundColor: awayTeam?.primaryColor || '#059669' }}
                 />
-                <div 
+                <div
                   className="relative w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-3xl flex items-center justify-center text-3xl sm:text-5xl font-extrabold shadow-2xl border-2 border-white/50"
-                  style={{ 
-                    background: `linear-gradient(135deg, ${awayTeam?.primaryColor || '#059669'} 0%, #08111e 100%)`, 
-                    borderColor: awayTeam?.secondaryColor || '#38bdf8' 
+                  style={{
+                    background: `linear-gradient(135deg, ${awayTeam?.primaryColor || '#059669'} 0%, #08111e 100%)`,
+                    borderColor: awayTeam?.secondaryColor || '#38bdf8'
                   }}
                 >
                   <span className="drop-shadow-lg transform group-hover:scale-110 transition-transform">{sportMeta.icon}</span>
@@ -1161,11 +1159,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                         key={s.setNumber}
                         type="button"
                         onClick={() => setActiveSetNum(s.setNumber)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
-                          isCur
+                        className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${isCur
                             ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-md'
                             : 'bg-slate-900/80 text-slate-200 border-slate-600 hover:border-emerald-400'
-                        }`}
+                          }`}
                       >
                         Set {s.setNumber}: {s.homePoints}-{s.awayPoints} {w ? '✓' : ''}
                       </button>
@@ -1284,7 +1281,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         {/* Live Match Operational Control Bar for Organizer / Referee */}
         {canEdit && (
           <div className="relative z-10 px-5 sm:px-6 py-3.5 sm:py-4 bg-[#081525] border-t-2 border-sky-500/40 flex flex-wrap items-center justify-between gap-3 shadow-2xl">
-            
+
             {/* Timer controls */}
             <div className="flex flex-wrap items-center gap-2.5">
               {activeMatch.status !== 'LIVE' ? (
@@ -1478,8 +1475,8 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                             (ev.cardType === 'YELLOW'
                               ? '🟨 THẺ VÀNG'
                               : ev.cardType === 'SECOND_YELLOW'
-                              ? '🟨🟥 THẺ VÀNG THỨ 2'
-                              : '🟥 THẺ ĐỎ TRỰC TIẾP')}
+                                ? '🟨🟥 THẺ VÀNG THỨ 2'
+                                : '🟥 THẺ ĐỎ TRỰC TIẾP')}
                           {ev.type === 'SUBSTITUTION' && '🔄 THAY NGƯỜI'}
                           {ev.type === 'NOTE' && '⚖️ QUYẾT ĐỊNH TRỌNG TÀI / BTC'}
                         </span>
@@ -1543,22 +1540,20 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 <button
                   type="button"
                   onClick={() => setEventTeamId(homeTeam?.id || '')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    eventTeamId === homeTeam?.id
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${eventTeamId === homeTeam?.id
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {homeTeam?.name}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEventTeamId(awayTeam?.id || '')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    eventTeamId === awayTeam?.id
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${eventTeamId === awayTeam?.id
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {awayTeam?.name}
                 </button>
@@ -1670,22 +1665,20 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 <button
                   type="button"
                   onClick={() => setEventTeamId(homeTeam?.id || '')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    eventTeamId === homeTeam?.id
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${eventTeamId === homeTeam?.id
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {homeTeam?.name}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEventTeamId(awayTeam?.id || '')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    eventTeamId === awayTeam?.id
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${eventTeamId === awayTeam?.id
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {awayTeam?.name}
                 </button>
@@ -1716,22 +1709,20 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 <button
                   type="button"
                   onClick={() => setCardType('YELLOW')}
-                  className={`p-2.5 rounded-xl text-xs font-black border transition-colors flex items-center justify-center gap-1.5 ${
-                    cardType === 'YELLOW'
+                  className={`p-2.5 rounded-xl text-xs font-black border transition-colors flex items-center justify-center gap-1.5 ${cardType === 'YELLOW'
                       ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-xs ring-1 ring-amber-400'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   <span>🟨</span> Thẻ Vàng (Tích Lũy)
                 </button>
                 <button
                   type="button"
                   onClick={() => setCardType('RED')}
-                  className={`p-2.5 rounded-xl text-xs font-black border transition-colors flex items-center justify-center gap-1.5 ${
-                    cardType === 'RED'
+                  className={`p-2.5 rounded-xl text-xs font-black border transition-colors flex items-center justify-center gap-1.5 ${cardType === 'RED'
                       ? 'bg-rose-100 text-rose-900 border-rose-300 shadow-xs ring-1 ring-rose-400'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   <span>🟥</span> Thẻ Đỏ Trực Tiếp
                 </button>
@@ -1787,22 +1778,20 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 <button
                   type="button"
                   onClick={() => setEventTeamId(homeTeam?.id || '')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    eventTeamId === homeTeam?.id
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${eventTeamId === homeTeam?.id
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {homeTeam?.name}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEventTeamId(awayTeam?.id || '')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    eventTeamId === awayTeam?.id
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${eventTeamId === awayTeam?.id
                       ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {awayTeam?.name}
                 </button>
@@ -2018,22 +2007,20 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 <button
                   type="button"
                   onClick={() => setForfeitTeamId(homeTeam?.id || '')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    forfeitTeamId === homeTeam?.id
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${forfeitTeamId === homeTeam?.id
                       ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {homeTeam?.name || 'Đội nhà'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setForfeitTeamId(awayTeam?.id || '')}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${
-                    forfeitTeamId === awayTeam?.id
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors ${forfeitTeamId === awayTeam?.id
                       ? 'bg-rose-600 text-white border-rose-700 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   {awayTeam?.name || 'Đội khách'}
                 </button>
@@ -2107,11 +2094,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                     key={mins}
                     type="button"
                     onClick={() => setEditMatchDurationInput(mins)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${
-                      editMatchDurationInput === mins
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${editMatchDurationInput === mins
                         ? 'bg-blue-600 border-blue-700 text-white'
                         : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
+                      }`}
                   >
                     {mins}p (2×{Math.floor(mins / 2)}p)
                   </button>

@@ -3,15 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import { Complaint, Match, Team, UserRole, ComplaintType, ComplaintStatus, UserAccount } from '@/types';
 import { StorageService } from '@/services/storage';
-import { 
-  Clock, 
-  AlertCircle, 
-  Plus, 
-  CheckCircle2, 
-  XCircle, 
-  FileText, 
-  Lock, 
-  MessageSquare, 
+import {
+  Clock,
+  AlertCircle,
+  Plus,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  Lock,
+  MessageSquare,
   ShieldCheck,
   ShieldAlert
 } from 'lucide-react';
@@ -42,7 +42,7 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
       return (b.matchNumber || 0) - (a.matchNumber || 0);
     });
   const finishedMatches = allRelevantMatches.filter((m) => m.status === 'FINISHED' && m.completedAt);
-  
+
   // Phân quyền đội trưởng
   const isCaptain = currentRole === 'TEAM_MANAGER';
   const myTeam = isCaptain && currentUser?.teamId
@@ -209,11 +209,11 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      
+
       {/* Top Banner Card with 15-min Live Countdown Timer */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xs relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          
+
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1 rounded-full border border-blue-200 flex items-center gap-1.5">
@@ -243,11 +243,10 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
             </div>
 
             <div
-              className={`px-4 py-2 rounded-xl font-mono text-xl font-black flex items-center gap-2 shadow-inner border ${
-                !isWindowExpired
+              className={`px-4 py-2 rounded-xl font-mono text-xl font-black flex items-center gap-2 shadow-inner border ${!isWindowExpired
                   ? 'bg-blue-50 text-blue-700 border-blue-200 animate-pulse'
                   : 'bg-rose-50 text-rose-700 border-rose-200'
-              }`}
+                }`}
             >
               {!isWindowExpired ? (
                 <>
@@ -327,9 +326,8 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
 
                     <div className="flex items-center gap-2">
                       <span
-                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                          statusBadges[c.status].color
-                        }`}
+                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${statusBadges[c.status].color
+                          }`}
                       >
                         {statusBadges[c.status].label}
                       </span>
@@ -386,7 +384,7 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
             </h3>
             <p className="text-xs text-blue-800 bg-blue-50 p-2.5 rounded-xl border border-blue-200">
               {isEligibilityComplaint
-                ? 'Khiếu nại tư cách cầu thủ / gian lận nhân sự được tiếp nhận kèm bằng chứng. Quyết định của BTC là quyết định cuối cùng.'
+                ? 'Khiếu nại tư cách cầu thủ / gian lận nhân sự được tiếp nhận kèm Video bằng chứng. Quyết định của BTC là quyết định cuối cùng.'
                 : `Thời gian khiếu nại trận còn lại: ${formatMinSec(timeLeftSec)}. Quyết định của BTC là quyết định cuối cùng.`}
             </p>
 
@@ -443,13 +441,13 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
               selectedMatchForComplaint.homeTeamId !== currentUser.teamId &&
               selectedMatchForComplaint.awayTeamId !== currentUser.teamId
             ) && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  Trận đấu <strong>{selectedMatchForComplaint.roundLabel}</strong> không có sự tham gia của đội bạn ({myTeam?.name}). Theo Điều 17 Điều lệ giải, chỉ 2 đội trực tiếp thi đấu mới được gửi khiếu nại.
-                </span>
-              </div>
-            )}
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    Trận đấu <strong>{selectedMatchForComplaint.roundLabel}</strong> không có sự tham gia của đội bạn ({myTeam?.name}). Theo Điều 17 Điều lệ giải, chỉ 2 đội trực tiếp thi đấu mới được gửi khiếu nại.
+                  </span>
+                </div>
+              )}
 
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1">Loại Khiếu Nại</label>
@@ -513,10 +511,10 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
                 disabled={
                   !isEligibilityComplaint &&
                   Boolean(isCaptain &&
-                  currentUser?.teamId &&
-                  selectedMatchForComplaint &&
-                  selectedMatchForComplaint.homeTeamId !== currentUser.teamId &&
-                  selectedMatchForComplaint.awayTeamId !== currentUser.teamId)
+                    currentUser?.teamId &&
+                    selectedMatchForComplaint &&
+                    selectedMatchForComplaint.homeTeamId !== currentUser.teamId &&
+                    selectedMatchForComplaint.awayTeamId !== currentUser.teamId)
                 }
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:opacity-40 text-white text-xs font-bold shadow-xs transition-all"
               >

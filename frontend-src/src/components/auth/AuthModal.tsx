@@ -344,14 +344,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
                 <div>
                   <div className="text-xs font-bold text-slate-900">Tài khoản: Sinh Viên / Cổ Động Viên</div>
-                  <div className="text-[11px] text-slate-500">Theo dõi lịch thi đấu, diễn biến trực tiếp và bảng xếp hạng giải đấu</div>
+                  <div className="text-[11px] text-slate-500">Theo dõi lịch thi tỷ số trực tiếp và bảng xếp hạng giải đấu</div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Mã Sinh Viên (MSSV)
+                    Mã Số Sinh Viên
                   </label>
                   <input
                     type="text"
@@ -364,7 +364,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Lớp sinh hoạt
+                    Lớp
                   </label>
                   <input
                     type="text"
@@ -378,7 +378,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Mật khẩu bảo vệ <span className="text-red-500">*</span>
+                  Mật khẩu <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />

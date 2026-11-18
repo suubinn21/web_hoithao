@@ -4,13 +4,13 @@ import React, { useState, useMemo } from 'react';
 import { FinancialTransaction, Team, UserRole, PaymentStatus, Tournament, Match, PaidFineRecord } from '@/types';
 import { StorageService } from '@/services/storage';
 import { DisciplineEngine } from '@/services/disciplineEngine';
-import { 
+import {
   BadgeDollarSign,
-  TrendingUp, 
-  TrendingDown, 
-  Wallet, 
-  Plus, 
-  Receipt, 
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  Plus,
+  Receipt,
   FileSpreadsheet,
   Lock,
   Coins
@@ -152,7 +152,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
 
   return (
     <div className="space-y-6">
-      
+
       {/* Top Banner Card */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -190,7 +190,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
 
       {/* Financial Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        
+
         {/* Total Income */}
         <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
@@ -223,7 +223,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
             {totalExpense.toLocaleString()} đ
           </div>
           <p className="text-[11px] text-slate-500 mt-2">
-            Thuê 3 sân, trọng tài, cờ &amp; huy chương, nước uống, y tế và giải thưởng.
+            Thuê  sân, trọng tài, cờ &amp; huy chương, nước uống, y tế và giải thưởng.
           </p>
         </div>
 
@@ -231,7 +231,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
         <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-xs relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              SỐ DƯ QUỸ (NET BALANCE)
+              SỐ DƯ QUỸ
             </span>
             <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center">
               <Wallet className="w-5 h-5" />
@@ -287,11 +287,10 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
               <button
                 onClick={() => handleToggleTeamFee(t.id)}
                 disabled={!canManage}
-                className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${
-                  t.feeStatus === 'PAID'
+                className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all cursor-pointer ${t.feeStatus === 'PAID'
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                     : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                }`}
+                  }`}
               >
                 {t.feeStatus === 'PAID' ? '✓ ĐÃ NỘP' : 'CHƯA NỘP'}
               </button>
@@ -313,31 +312,28 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
           <div className="flex items-center gap-2 text-xs">
             <button
               onClick={() => setFilterType('ALL')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-                filterType === 'ALL'
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all ${filterType === 'ALL'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               Tất Cả
             </button>
             <button
               onClick={() => setFilterType('INCOME')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-                filterType === 'INCOME'
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all ${filterType === 'INCOME'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-              }`}
+                }`}
             >
               Khoản Thu (+)
             </button>
             <button
               onClick={() => setFilterType('EXPENSE')}
-              className={`px-3 py-1.5 rounded-xl font-bold transition-all ${
-                filterType === 'EXPENSE'
+              className={`px-3 py-1.5 rounded-xl font-bold transition-all ${filterType === 'EXPENSE'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
-              }`}
+                }`}
             >
               Khoản Chi (-)
             </button>
@@ -375,9 +371,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                     {tx.date}
                   </td>
                   <td
-                    className={`py-3 px-4 text-right font-mono font-black text-sm ${
-                      tx.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'
-                    }`}
+                    className={`py-3 px-4 text-right font-mono font-black text-sm ${tx.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600'
+                      }`}
                   >
                     {tx.type === 'INCOME' ? `+${tx.amount.toLocaleString()}` : `-${tx.amount.toLocaleString()}`} đ
                   </td>
@@ -406,11 +401,10 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                     setTxType('INCOME');
                     setTxCategoryName('Lệ phí đăng ký giải');
                   }}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-                    txType === 'INCOME'
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${txType === 'INCOME'
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   + Phiếu Thu (Income)
                 </button>
@@ -420,11 +414,10 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                     setTxType('EXPENSE');
                     setTxCategoryName('Chi phí thuê sân');
                   }}
-                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-                    txType === 'EXPENSE'
+                  className={`p-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${txType === 'EXPENSE'
                       ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                  }`}
+                    }`}
                 >
                   - Phiếu Chi (Expense)
                 </button>

@@ -312,11 +312,11 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         currentRole,
         'ĐỔI MẬT KHẨU TÀI KHOẢN',
         `@${resetTargetUser.username}`,
-        `Đã cập nhật mật khẩu mới cho tài khoản @${resetTargetUser.username} trong MySQL.`
+        `Đã cập nhật mật khẩu mới cho tài khoản @${resetTargetUser.username} trong CSDL.`
       );
       await loadUsers();
       onAccountsUpdated?.();
-      setActionSuccessMsg(`Đã cập nhật mật khẩu mới (mã hóa Bcrypt) cho @${resetTargetUser.username}!`);
+      setActionSuccessMsg(`Đã cập nhật mật khẩu mới cho @${resetTargetUser.username}!`);
       setResetTargetUser(null);
       setNewResetPassword('');
       setTimeout(() => setActionSuccessMsg(null), 3500);
@@ -326,7 +326,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   };
 
   const handleDeleteUser = async (u: UserAccount) => {
-    if (!confirm(`Bạn có chắc chắn muốn XÓA tài khoản @${u.username} (${u.fullName}) khỏi CSDL MySQL?`)) {
+    if (!confirm(`Bạn có chắc chắn muốn XÓA tài khoản @${u.username} (${u.fullName}) khỏi CSDL ?`)) {
       return;
     }
 
@@ -445,11 +445,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               <span>Tạo Tài Khoản Mới</span>
             </button>
           </div>
-
-          <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg font-semibold">
-            <Lock className="w-3.5 h-3.5" />
-            <span>Bảo mật Bcrypt / SQL CSDL</span>
-          </div>
         </div>
 
         {actionSuccessMsg && (
@@ -528,7 +523,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               </div>
 
               {loadingList ? (
-                <div className="py-12 text-center text-xs text-slate-500">Đang tải danh sách từ MySQL...</div>
+                <div className="py-12 text-center text-xs text-slate-500">Đang tải danh sách từ CSDL...</div>
               ) : filteredUsers.length === 0 ? (
                 <div className="py-12 text-center bg-slate-50 border border-slate-200 rounded-2xl">
                   <Users className="w-10 h-10 text-slate-400 mx-auto mb-2" />
@@ -1000,7 +995,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                     <KeyRound className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-slate-900">Đặt Mật Khẩu Mới (MySQL)</h3>
+                    <h3 className="text-base font-black text-slate-900">Đặt Mật Khẩu Mới</h3>
                     <p className="text-xs text-slate-500">
                       Tài khoản: <strong className="text-blue-600 font-mono">@{resetTargetUser.username}</strong> ({resetTargetUser.fullName})
                     </p>

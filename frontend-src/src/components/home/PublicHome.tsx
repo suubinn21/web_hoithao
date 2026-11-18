@@ -185,7 +185,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           <div className="flex items-center gap-2">
             <Flame className="w-4 h-4 text-blue-600" />
             <h3 className="text-xs font-black uppercase tracking-widest text-slate-700">
-              CHỈ SỐ TỔNG THỂ GIẢI ĐẤU (BTC DASHBOARD • ĐIỀU 31)
+              CHỈ SỐ TỔNG THỂ GIẢI ĐẤU
             </h3>
           </div>
           <span className="text-[11px] text-slate-500 font-medium">Cập nhật tự động thời gian thực</span>
@@ -273,7 +273,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
             <div className="flex items-center gap-2">
               <Radio className="w-4 h-4 text-red-600" />
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-900">
-                Trận Cầu Nổi Bật &amp; Đang Diễn Ra
+                Trận Đang Diễn Ra
               </h3>
             </div>
             <button
@@ -446,12 +446,12 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                           <div className="flex items-center gap-3">
                             <span
                               className={`w-6 h-6 rounded-full flex items-center justify-center font-mono font-bold text-xs ${idx === 0
-                                  ? 'bg-amber-500 text-white font-black shadow-xs'
-                                  : idx === 1
-                                    ? 'bg-slate-300 text-slate-800 font-black'
-                                    : idx === 2
-                                      ? 'bg-amber-700 text-white font-black'
-                                      : 'bg-slate-200 text-slate-600'
+                                ? 'bg-amber-500 text-white font-black shadow-xs'
+                                : idx === 1
+                                  ? 'bg-slate-300 text-slate-800 font-black'
+                                  : idx === 2
+                                    ? 'bg-amber-700 text-white font-black'
+                                    : 'bg-slate-200 text-slate-600'
                                 }`}
                             >
                               {idx + 1}

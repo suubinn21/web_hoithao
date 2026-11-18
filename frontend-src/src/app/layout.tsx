@@ -3,12 +3,12 @@ import './globals.css';
 import { SportsBackground } from '@/components/layout/SportsBackground';
 
 export const metadata: Metadata = {
-  title: 'ITFTMS 2026 - Hệ Thống Quản Lý Giải Bóng Đá Khoa CNTT 2026',
-  description: 'Hệ thống quản lý, điều hành và cổng thông tin trực tiếp Giải bóng đá Khoa Công nghệ Thông tin 2026',
+  title: 'ITFTMS 2026 - Hệ Thống Quản Lý Hội Thao Khoa CNTT 2026',
+  description: 'Hệ thống quản lý, điều hành và cổng thông tin trực tiếp Giải bóng đá Khoa Công nghệ Thông tin',
 };
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: 'device-width'
   initialScale: 1,
   maximumScale: 5,
   themeColor: '#0284C7',

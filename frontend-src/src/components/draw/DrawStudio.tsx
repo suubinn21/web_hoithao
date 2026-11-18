@@ -5,15 +5,15 @@ import confetti from 'canvas-confetti';
 import { Team, UserRole, Tournament, getGroupLetters } from '@/types';
 import { StorageService } from '@/services/storage';
 import { SoundFX } from '@/utils/soundEffects';
-import { 
-  Dices, 
-  Lock, 
-  Unlock, 
-  RotateCcw, 
-  ArrowLeftRight, 
-  Shuffle, 
-  CheckCircle2, 
-  Plus, 
+import {
+  Dices,
+  Lock,
+  Unlock,
+  RotateCcw,
+  ArrowLeftRight,
+  Shuffle,
+  CheckCircle2,
+  Plus,
   Sparkles,
   MoveRight,
   AlertCircle,
@@ -173,7 +173,7 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
     StorageService.logAction(
       currentRole,
       currentRole,
-      'BỐC THĂM TỰ ĐỘNG CHIA BẢNG',
+      'BỐC THĂM TỰ ĐỘNG',
       `${teams.length} Đội bóng`,
       `Phân chia các đội vào ${groups.length} bảng ngẫu nhiên và công bằng.`
     );
@@ -323,13 +323,13 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
 
   return (
     <div className="space-y-6">
-      
+
       {/* Studio Header Banner with Clean Ocean Blue Styling */}
       <div className="relative rounded-3xl overflow-hidden border border-slate-200 bg-white p-6 sm:p-8 shadow-xs">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-50/40 via-sky-50/30 to-slate-50/60 pointer-events-none" />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          
+
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5">
@@ -384,8 +384,8 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
                   {isDrawing
                     ? 'Đang Quay Cầu...'
                     : isSingleLeague
-                    ? 'Bốc Thăm Mã Số Tự Động'
-                    : 'Bốc Thăm Tự Động'}
+                      ? 'Bốc Thăm Mã Số Tự Động'
+                      : 'Bốc Thăm Tự Động'}
                 </span>
               </button>
 
@@ -413,11 +413,10 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
 
               <button
                 onClick={toggleLock}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm border transition-all cursor-pointer ${
-                  isLocked
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm border transition-all cursor-pointer ${isLocked
                     ? 'bg-slate-100 text-amber-700 border-amber-200 hover:bg-slate-200'
                     : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                }`}
+                  }`}
               >
                 {isLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                 <span>{isLocked ? 'Mở Khóa Bốc Thăm' : 'Khóa Kết Quả'}</span>

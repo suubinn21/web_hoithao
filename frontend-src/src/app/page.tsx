@@ -116,7 +116,7 @@ export default function Home() {
 
     // Bảo mật phân quyền: Trọng tài, Đội trưởng, Sinh viên không được xem Tài chính và Audit Log
     if ((tab === 'finance' || tab === 'audit') && currentRole !== 'SUPER_ADMIN' && currentRole !== 'ORGANIZER') {
-      alert('Quyền truy cập bị từ chối: Mục Tài Chính & Lệ Phí chỉ dành riêng cho Ban Tổ Chức (BTC) và Super Admin!');
+      alert('Quyền truy cập bị từ chối: Mục Tài Chính & Lệ Phí chỉ dành riêng cho Ban Tổ Chứ và Admin!');
       return;
     }
 
@@ -155,7 +155,7 @@ export default function Home() {
 
   const handleGoBack = () => {
     SoundFX.playClick();
-    
+
     // 1. Đóng menu mobile nếu đang mở
     if (mobileMenuOpen) {
       setMobileMenuOpen(false);
@@ -445,7 +445,7 @@ export default function Home() {
   const handleDeleteTournament = async (tourId: string) => {
     const res = await deleteTournamentCloud(tourId);
     if (!res.ok) {
-      alert(res.error || 'Không thể xóa giải đấu trên MySQL!');
+      alert(res.error || 'Không thể xóa giải đấu trên CSDL!');
       return;
     }
 
@@ -502,7 +502,7 @@ export default function Home() {
         status: 'REGISTRATION',
         auditLogs: updatedLogs,
       });
-      alert('Đã xóa sạch dữ liệu giải đấu thành công trên CSDL MySQL!');
+      alert('Đã xóa sạch dữ liệu giải đấu thành công trên CSDL!');
     }
   };
 
@@ -536,7 +536,7 @@ export default function Home() {
     });
 
     if (!res.ok) {
-      alert(res.error || 'Không thể lưu giải đấu mới vào CSDL MySQL!');
+      alert(res.error || 'Không thể lưu giải đấu mới vào CSDL!');
       return;
     }
 
@@ -824,7 +824,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-transparent text-slate-900">
-      
+
       {/* Header with Role Switcher, Tournament Stage, Sound FX & Clear Data */}
       <Header
         currentRole={currentRole}
@@ -874,7 +874,7 @@ export default function Home() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-28 md:py-8">
-        
+
         {activeTab === 'home' && (
           <PublicHome
             teams={teams}
@@ -940,9 +940,9 @@ export default function Home() {
         {activeTab === 'bracket' && (
           (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE' ? (
             <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-xs">
-              <h3 className="text-lg font-black text-slate-900">Thể Thức Vòng Tròn 1 Lượt (Không Đá Knockout)</h3>
+              <h3 className="text-lg font-black text-slate-900">Thể Thức Vòng Tròn 1 Lượt </h3>
               <p className="text-xs text-slate-600 max-w-md mx-auto">
-                Theo thể lệ giải, 12 đội thi đấu vòng tròn 1 lượt tính điểm xếp hạng chung cuộc (Top 1–2–3 nhận giải Nhất, Nhì, Ba). Vui lòng xem Bảng Xếp Hạng để theo dõi thứ hạng.
+                Theo thể lệ giải, 12 đội thi đấu vòng tròn 1 lượt tính điểm xếp hạng chung cuộc (Top 1–2–3 nhận giải Nhất, Nhì, Ba).
               </p>
               <button
                 onClick={() => handleNavigateTab('standings')}
@@ -1012,7 +1012,7 @@ export default function Home() {
             />
           ) : (
             <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center text-slate-600 shadow-sm">
-              Chức năng Khiếu nại 15 phút chỉ dành riêng cho Đội trưởng và Ban Tổ Chức theo Điều 17.
+              Chức năng Khiếu nại 15 phút chỉ dành riêng cho Đội trưởng và Ban Tổ Chức.
             </div>
           )
         )}
@@ -1083,7 +1083,7 @@ export default function Home() {
               ITFTMS 2026
             </span>
             <div>
-              <span className="font-semibold text-slate-800 block">Khoa Công Nghệ Thông Tin • Ban Thể Thao Đoàn - Hội</span>
+              <span className="font-semibold text-slate-800 block">Khoa Công Nghệ Thông Tin • Ban Tổ Chức hội Thao</span>
               <span className="text-[11px] text-blue-700 font-bold">Thực hiện: Phạm Su Bin • Lớp Kỹ Thuật Phần Mềm 23</span>
             </div>
           </div>
@@ -1103,7 +1103,7 @@ export default function Home() {
           </div>
 
           <div className="text-slate-500 text-center md:text-right">
-            <div>Hệ Thống Quản Lý &amp; Điều Hành Giải Thể Thao CNTT 2026</div>
+            <div>Hệ Thống Quản Lý &amp; Điều Hành Giải Thể Thao CNTT </div>
             <div className="text-[11px] font-semibold text-slate-700 mt-0.5">Phạm Su Bin — Lớp Kỹ Thuật Phần Mềm 23</div>
           </div>
         </div>

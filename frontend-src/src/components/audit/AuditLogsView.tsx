@@ -29,16 +29,15 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, currentRole,
 
   return (
     <div className="space-y-6">
-      
+
       {/* Top Banner */}
       <div className="bg-[#0B132B] border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="bg-red-500/20 text-red-400 text-xs font-bold px-2.5 py-0.5 rounded-full border border-red-500/30 flex items-center gap-1">
               <Shield className="w-3.5 h-3.5" />
-              AUDIT LOG & BẢO MẬT HỆ THỐNG
+              Dữ liệu & BẢO MẬT HỆ THỐNG
             </span>
-            <span className="text-xs text-slate-400">Quy định Điều 18 & 26</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-white">
             Nhật Ký Thao Tác & Kiểm Soát Dữ Liệu
@@ -85,7 +84,7 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({ logs, currentRole,
             className="bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2"
           >
             <option value="ALL">Tất Cả Vai Trò (Roles)</option>
-            <option value="SUPER_ADMIN">Super Admin</option>
+            <option value="SUPER_ADMIN"> Admin</option>
             <option value="ORGANIZER">Ban Tổ Chức (BTC)</option>
             <option value="REFEREE">Trọng Tài</option>
             <option value="TEAM_MANAGER">Trưởng Đoàn</option>
