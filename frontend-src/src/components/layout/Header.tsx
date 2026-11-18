@@ -1,20 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { UserRole, TournamentStatus, Tournament, UserAccount } from '@/types';
+import { UserRole, TournamentStatus, Tournament, UserAccount, getSportMeta } from '@/types';
 import { SoundFX } from '@/utils/soundEffects';
-import { 
-  Trophy, 
-  Volume2, 
-  VolumeX, 
-  Trash2, 
-  UserCheck, 
-  Radio, 
-  Sparkles, 
-  ChevronDown, 
-  Plus, 
-  LayoutGrid, 
-  Edit3, 
+import {
+  Trophy,
+  Volume2,
+  VolumeX,
+  Trash2,
+  UserCheck,
+  Radio,
+  Sparkles,
+  ChevronDown,
+  Plus,
+  LayoutGrid,
+  Edit3,
   Menu,
   LogIn,
   LogOut,
@@ -92,13 +92,14 @@ export const Header: React.FC<HeaderProps> = ({
 
   const roleLabels: Record<UserRole, { label: string; badge: string; color: string }> = {
     SUPER_ADMIN: { label: 'Super Admin', badge: 'Toàn quyền', color: 'bg-red-50 text-red-700 border-red-200' },
-    ORGANIZER: { label: 'Ban Tổ Chức (BTC)', badge: 'Điều hành', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+    ORGANIZER: { label: 'Ban Tổ Chức ', badge: 'Điều hành', color: 'bg-blue-50 text-blue-700 border-blue-200' },
     REFEREE: { label: 'Trọng Tài', badge: 'Biên bản trận', color: 'bg-amber-50 text-amber-700 border-amber-200' },
-    TEAM_MANAGER: { label: 'Trưởng Đoàn / Đội Trưởng', badge: 'Quản lý đội', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+    TEAM_MANAGER: { label: 'Đội Trưởng', badge: 'Quản lý đội', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
     STUDENT: { label: 'Sinh Viên / Cổ Động Viên', badge: 'Công khai', color: 'bg-purple-50 text-purple-700 border-purple-200' },
   };
 
   const canManage = currentRole === 'SUPER_ADMIN' || currentRole === 'ORGANIZER';
+  const sportMeta = getSportMeta(tournament?.sportType);
 
   const statusConfigs: Record<
     TournamentStatus,
@@ -162,7 +163,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-50 bg-white border-b border-slate-200 text-slate-800 shadow-xs">
       {/* Top Banner Alert for Live Matches */}
       {liveMatchCount > 0 && (
-        <div 
+        <div
           onClick={onNavigateToLive}
           className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white text-xs font-black py-2 px-4 text-center cursor-pointer hover:opacity-95 transition-all flex items-center justify-center gap-2 shadow-inner"
         >
@@ -177,7 +178,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-18 sm:h-20">
-          
+
           {/* Brand Logo, Back Button, Portal Button & Dynamic Tournament Title */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Dedicated Back Button (Lùi 1 trang) - Visible on mobile & desktop */}
@@ -215,19 +216,19 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex-1 min-w-0 pr-2">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] sm:text-xs font-black tracking-widest text-sky-700 uppercase bg-sky-50 px-2 py-0.5 rounded border border-sky-200 font-mono shrink-0 whitespace-nowrap">
-                  {tournament.shortCode || 'ITFTMS 2026'}
+                  {sportMeta.icon} {tournament.shortCode || 'ITFTMS 2026'}
                 </span>
-                <span className="hidden xl:inline-block text-xs text-slate-500 truncate">| {tournament.format || 'Bóng Đá 5 Người'}</span>
+                <span className="hidden xl:inline-block text-xs text-slate-500 truncate">| {tournament.format || sportMeta.fullLabel}</span>
               </div>
               <h1 className="text-xs sm:text-sm lg:text-base font-black tracking-tight text-slate-900 truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs lg:max-w-sm xl:max-w-md">
-                {tournament.name || 'GIẢI BÓNG ĐÁ KHOA CNTT 2026'}
+                {tournament.name || `GIẢI ${sportMeta.label.toUpperCase()} KHOA CNTT 2026`}
               </h1>
             </div>
           </div>
 
           {/* Right Controls: Desktop controls hidden on mobile, mobile has ONLY the Hamburger Menu button */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-            
+
             {/* Edit Tournament Config Button (Desktop only, mobile in Menu Hamburger) */}
             {(currentRole === 'SUPER_ADMIN' || currentRole === 'ORGANIZER') && onEditTournament && (
               <button
@@ -256,9 +257,8 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative hidden lg:block shrink-0">
               <button
                 onClick={() => canManage && setStatusMenuOpen(!statusMenuOpen)}
-                className={`flex items-center gap-2 text-xs font-bold min-h-[40px] px-3.5 rounded-xl border shadow-xs transition-all shrink-0 whitespace-nowrap ${currentStage.bgClass} ${
-                  canManage ? 'cursor-pointer hover:brightness-95 active:scale-95' : 'cursor-default'
-                }`}
+                className={`flex items-center gap-2 text-xs font-bold min-h-[40px] px-3.5 rounded-xl border shadow-xs transition-all shrink-0 whitespace-nowrap ${currentStage.bgClass} ${canManage ? 'cursor-pointer hover:brightness-95 active:scale-95' : 'cursor-default'
+                  }`}
                 title={canManage ? 'Bấm để thay đổi giai đoạn giải đấu' : 'Giai đoạn hiện tại của giải đấu'}
               >
                 <span className="relative flex h-2 w-2 shrink-0">
@@ -283,11 +283,10 @@ export const Header: React.FC<HeaderProps> = ({
                           onStatusChange(key);
                           setStatusMenuOpen(false);
                         }}
-                        className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between transition-colors min-h-[40px] ${
-                          tournamentStatus === key
+                        className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between transition-colors min-h-[40px] ${tournamentStatus === key
                             ? `${config.bgClass} font-black border-y border-transparent`
                             : 'text-slate-700 hover:bg-slate-50'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
                           <span className={`w-2 h-2 rounded-full ${config.dotClass} shrink-0`}></span>
@@ -325,11 +324,10 @@ export const Header: React.FC<HeaderProps> = ({
             {/* Sound FX Toggle Button (Desktop only, mobile in Menu Hamburger) */}
             <button
               onClick={toggleSound}
-              className={`hidden md:flex items-center justify-center min-h-[40px] min-w-[40px] rounded-xl border transition-all shrink-0 ${
-                soundOn
+              className={`hidden md:flex items-center justify-center min-h-[40px] min-w-[40px] rounded-xl border transition-all shrink-0 ${soundOn
                   ? 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100'
                   : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'
-              }`}
+                }`}
               title={soundOn ? 'Âm thanh còi & ăn mừng: BẬT' : 'Âm thanh: TẮT'}
               aria-label="Bật tắt âm thanh hiệu ứng"
             >

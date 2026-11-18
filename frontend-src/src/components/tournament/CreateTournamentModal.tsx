@@ -1,8 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
-import { Tournament, TournamentStatus, TournamentFormatType, getGroupLetters } from '@/types';
+import {
+  Tournament,
+  TournamentStatus,
+  TournamentFormatType,
+  SportType,
+  BadmintonCategory,
+  SportSetConfig,
+  getGroupLetters,
+  getSportMeta,
+} from '@/types';
 import { DEFAULT_STUDENT_SCHEDULE_CONFIG } from '@/services/scheduleEngine';
 import { SoundFX } from '@/utils/soundEffects';
 import { 
@@ -29,6 +38,27 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
 }) => {
   const resolveInitFormat = (): TournamentFormatType =>
     mode === 'edit' ? (currentTournament.formatType || 'SINGLE_LEAGUE') : 'SINGLE_LEAGUE';
+
+  const resolveInitSport = (): SportType =>
+    mode === 'edit' ? (currentTournament.sportType || 'FOOTBALL') : 'FOOTBALL';
+
+  const [sportType, setSportType] = useState<SportType>(resolveInitSport);
+  const [bestOf, setBestOf] = useState<3 | 5>(
+    mode === 'edit' ? (currentTournament.setConfig?.bestOf || 3) : 3
+  );
+  const [pointsPerSet, setPointsPerSet] = useState<number>(
+    mode === 'edit'
+      ? (currentTournament.setConfig?.pointsPerSet || (currentTournament.sportType === 'VOLLEYBALL' ? 25 : 21))
+      : 21
+  );
+  const [decidingSetPoints, setDecidingSetPoints] = useState<number>(
+    mode === 'edit'
+      ? (currentTournament.setConfig?.decidingSetPoints || (currentTournament.sportType === 'VOLLEYBALL' ? 15 : 21))
+      : 21
+  );
+  const [badmintonCategory, setBadmintonCategory] = useState<BadmintonCategory>(
+    mode === 'edit' ? (currentTournament.setConfig?.badmintonCategory || 'MEN_DOUBLES') : 'MEN_DOUBLES'
+  );
 
   const [formatType, setFormatType] = useState<TournamentFormatType>(resolveInitFormat);
   const [name, setName] = useState(
@@ -80,10 +110,25 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
       : 'Giải bóng đá sân 5 Khoa CNTT – CTUT. 12 đội đá vòng tròn 1 lượt tính điểm (66 trận), 2 hiệp x 30 phút.'
   );
 
+  const wasOpenRef = useRef(false);
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
+
     if (mode === 'edit' && currentTournament) {
       const fType = currentTournament.formatType || 'SINGLE_LEAGUE';
+      const sType = currentTournament.sportType || 'FOOTBALL';
+      const sMeta = getSportMeta(sType);
+      setSportType(sType);
+      setBestOf(currentTournament.setConfig?.bestOf || sMeta.defaultSetConfig.bestOf);
+      setPointsPerSet(currentTournament.setConfig?.pointsPerSet || sMeta.defaultSetConfig.pointsPerSet);
+      setDecidingSetPoints(currentTournament.setConfig?.decidingSetPoints || sMeta.defaultSetConfig.decidingSetPoints);
+      setBadmintonCategory(currentTournament.setConfig?.badmintonCategory || 'MEN_DOUBLES');
       setFormatType(fType);
       setName(currentTournament.name || 'Giải Bóng Đá Khoa Công Nghệ Thông Tin 2026');
       setShortCode(currentTournament.shortCode || 'CTUT-CNTT-2026');
@@ -96,7 +141,7 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
       setMaxTeams(currentTournament.maxTeams || (fType === 'SINGLE_LEAGUE' ? 12 : 16));
       setMaxPlayersPerTeam(currentTournament.maxPlayersPerTeam || 12);
       setMatchDurationMinutes(currentTournament.matchDurationMinutes || (fType === 'SINGLE_LEAGUE' ? 60 : 40));
-      setBreakDurationMinutes(currentTournament.breakDurationMinutes || 5);
+      setBreakDurationMinutes(currentTournament.breakDurationMinutes ?? 5);
       setRegistrationFee(currentTournament.registrationFee ?? (fType === 'SINGLE_LEAGUE' ? 100000 : 500000));
       setDepositFee(currentTournament.depositFee ?? (fType === 'SINGLE_LEAGUE' ? 0 : 50000));
       setStartDate(currentTournament.startDate || '2026-10-17');
@@ -104,6 +149,11 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
       setInitialStatus(currentTournament.status || 'REGISTRATION');
       setDescription(currentTournament.description || '');
     } else if (mode === 'create') {
+      setSportType('FOOTBALL');
+      setBestOf(3);
+      setPointsPerSet(21);
+      setDecidingSetPoints(21);
+      setBadmintonCategory('MEN_DOUBLES');
       setFormatType('SINGLE_LEAGUE');
       setName('Giải Bóng Đá Khoa Công Nghệ Thông Tin 2026');
       setShortCode('CTUT-CNTT-2026');
@@ -126,26 +176,84 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
 
   if (!isOpen) return null;
 
+  const sportMeta = getSportMeta(sportType);
+
+  const handleSportTypeChange = (nextSport: SportType) => {
+    setSportType(nextSport);
+    const isLeague = formatType === 'SINGLE_LEAGUE';
+
+    if (nextSport === 'FOOTBALL') {
+      if (mode === 'create') {
+        setName('Giải Bóng Đá Khoa Công Nghệ Thông Tin 2026');
+        setShortCode('CTUT-CNTT-2026');
+        setDescription('Giải bóng đá sân 5 Khoa CNTT – CTUT. 12 đội đá vòng tròn 1 lượt tính điểm (66 trận), 2 hiệp x 30 phút.');
+      }
+      setFormat(isLeague ? 'Sân 5 - Vòng tròn 1 lượt (12 đội)' : 'Bóng đá 5 người (Chia bảng + Knockout)');
+      setMaxPlayersPerTeam(12);
+      setMatchDurationMinutes(isLeague ? 60 : 40);
+      setBreakDurationMinutes(5);
+    } else if (nextSport === 'BADMINTON') {
+      if (mode === 'create') {
+        setName('Giải Cầu Lông Sinh Viên Khoa CNTT 2026');
+        setShortCode('CTUT-CL-2026');
+        setDescription('Giải cầu lông phong trào Khoa CNTT – CTUT. Thi đấu 3 ván thắng 2 (BO3), mỗi ván 21 điểm (tối đa 30 điểm).');
+      }
+      setFormat(isLeague ? 'Cầu lông - Vòng tròn tính điểm' : 'Cầu lông - Chia bảng + Knockout');
+      setMaxPlayersPerTeam(4);
+      setMatchDurationMinutes(45);
+      setBreakDurationMinutes(2);
+      setBestOf(3);
+      setPointsPerSet(21);
+      setDecidingSetPoints(21);
+      setBadmintonCategory('MEN_DOUBLES');
+    } else {
+      if (mode === 'create') {
+        setName('Giải Bóng Chuyền Sinh Viên Khoa CNTT 2026');
+        setShortCode('CTUT-BC-2026');
+        setDescription('Giải bóng chuyền Khoa CNTT – CTUT. Thi đấu 3 set thắng 2 (25 điểm, set quyết định 15 điểm), xếp hạng chuẩn FIVB.');
+      }
+      setFormat(isLeague ? 'Bóng chuyền - Vòng tròn tính điểm' : 'Bóng chuyền - Chia bảng + Knockout');
+      setMaxPlayersPerTeam(12);
+      setMatchDurationMinutes(60);
+      setBreakDurationMinutes(5);
+      setBestOf(3);
+      setPointsPerSet(25);
+      setDecidingSetPoints(15);
+    }
+  };
+
   const handleFormatTypeChange = (nextType: TournamentFormatType) => {
     setFormatType(nextType);
     if (nextType === 'SINGLE_LEAGUE') {
-      setFormat('Sân 5 - Vòng tròn 1 lượt (12 đội)');
+      if (sportType === 'BADMINTON') {
+        setFormat('Cầu lông - Vòng tròn tính điểm');
+      } else if (sportType === 'VOLLEYBALL') {
+        setFormat('Bóng chuyền - Vòng tròn tính điểm');
+      } else {
+        setFormat('Sân 5 - Vòng tròn 1 lượt (12 đội)');
+        setMatchDurationMinutes(60);
+      }
       setNumberOfGroups(1);
       setTeamsPerGroup(12);
       setMaxTeams(12);
       setNumberOfVenues(3);
-      setMatchDurationMinutes(60);
-      setBreakDurationMinutes(5);
+      setBreakDurationMinutes(sportType === 'BADMINTON' ? 2 : 5);
       setRegistrationFee(100000);
       setDepositFee(0);
     } else {
-      setFormat('Bóng đá 5 người (Chia bảng + Knockout)');
+      if (sportType === 'BADMINTON') {
+        setFormat('Cầu lông - Chia bảng + Knockout');
+      } else if (sportType === 'VOLLEYBALL') {
+        setFormat('Bóng chuyền - Chia bảng + Knockout');
+      } else {
+        setFormat('Bóng đá 5 người (Chia bảng + Knockout)');
+        setMatchDurationMinutes(40);
+      }
       setNumberOfGroups(4);
       setTeamsPerGroup(4);
       setMaxTeams(16);
       setNumberOfVenues(4);
-      setMatchDurationMinutes(40);
-      setBreakDurationMinutes(5);
+      setBreakDurationMinutes(sportType === 'BADMINTON' ? 2 : 5);
       setRegistrationFee(500000);
       setDepositFee(50000);
     }
@@ -177,12 +285,25 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
 
     const existingConfig = currentTournament?.scheduleConfig || DEFAULT_STUDENT_SCHEDULE_CONFIG;
 
+    const setConfig: SportSetConfig | undefined =
+      sportType === 'FOOTBALL'
+        ? undefined
+        : {
+            bestOf,
+            pointsPerSet,
+            decidingSetPoints,
+            winByTwo: true,
+            ...(sportType === 'BADMINTON' ? { maxPointCap: 30, badmintonCategory } : {}),
+          };
+
     const newTournament: Tournament = {
       id: mode === 'edit' ? currentTournament.id : `TOUR-${year}-${Date.now().toString().slice(-4)}`,
       name: name.trim(),
       shortCode: shortCode.trim().toUpperCase() || 'CTUT-CNTT',
       year,
       organizer: organizer.trim(),
+      sportType,
+      ...(setConfig ? { setConfig } : {}),
       format,
       formatType,
       maxTeams,
@@ -224,15 +345,15 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-              <Trophy className="w-6 h-6" />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-sky-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 text-2xl">
+              <span>{sportMeta.icon}</span>
             </div>
             <div>
               <span className="text-xs font-black text-sky-700 uppercase tracking-widest block">
                 {mode === 'edit' ? 'CHỈNH SỬA THÔNG SỐ GIẢI' : 'KHỞI TẠO MÙA GIẢI MỚI'}
               </span>
               <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-                {mode === 'edit' ? 'Cấu Hình Giải Đấu & Số Bảng' : 'Tạo Mới Giải Đấu Bóng Đá'}
+                {mode === 'edit' ? `Cấu Hình Giải ${sportMeta.label}` : `Tạo Mới Giải ${sportMeta.label}`}
               </h2>
             </div>
           </div>
@@ -247,6 +368,40 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="space-y-4">
+
+          {/* Sport Selector */}
+          <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-200 space-y-2.5">
+            <span className="text-xs font-black text-sky-900 uppercase tracking-wider flex items-center gap-1.5">
+              <Trophy className="w-4 h-4 text-sky-600" />
+              Chọn Môn Thể Thao Thi Đấu
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {(
+                [
+                  { key: 'FOOTBALL' as SportType, icon: '⚽', title: 'Bóng Đá', desc: 'Sân 5 / Futsal • 2 hiệp' },
+                  { key: 'BADMINTON' as SportType, icon: '🏸', title: 'Cầu Lông', desc: 'Đơn / Đôi • Tính ván (21đ)' },
+                  { key: 'VOLLEYBALL' as SportType, icon: '🏐', title: 'Bóng Chuyền', desc: '6 người • Tính set (25đ/15đ)' },
+                ]
+              ).map((sp) => (
+                <button
+                  key={sp.key}
+                  type="button"
+                  onClick={() => handleSportTypeChange(sp.key)}
+                  className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 ${
+                    sportType === sp.key
+                      ? 'bg-white border-blue-600 shadow-sm ring-2 ring-blue-500/20'
+                      : 'bg-white/70 border-slate-200 hover:bg-white'
+                  }`}
+                >
+                  <span className="text-2xl shrink-0">{sp.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-black text-slate-900">{sp.title}</div>
+                    <div className="text-[11px] text-slate-600 truncate">{sp.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
           
           {/* Tournament Name */}
           <div>
@@ -368,6 +523,111 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
             </div>
           </div>
 
+          {/* Cấu hình luật thi đấu theo Set (Cầu lông & Bóng chuyền) */}
+          {sportType !== 'FOOTBALL' && (
+            <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-black text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>{sportMeta.icon}</span>
+                  Cấu Hình Luật Thi Đấu Theo Set ({sportMeta.label})
+                </span>
+                <span className="text-[11px] font-bold text-emerald-800 bg-white px-2.5 py-0.5 rounded-lg border border-emerald-200">
+                  BO{bestOf} • {pointsPerSet}đ (Set cuối {decidingSetPoints}đ)
+                </span>
+              </div>
+
+              <div className={`grid grid-cols-1 ${sportType === 'BADMINTON' ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-3 text-xs`}>
+                <div>
+                  <label className="text-[11px] text-slate-700 font-semibold block mb-1">
+                    Số ván / set tối đa
+                  </label>
+                  <select
+                    value={bestOf}
+                    onChange={(e) => setBestOf(Number(e.target.value) as 3 | 5)}
+                    className="w-full bg-white border border-slate-200 text-emerald-800 font-bold text-xs rounded-xl p-2.5 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-xs"
+                  >
+                    <option value={3}>BO3 (Thắng 2 / 3 set)</option>
+                    <option value={5}>BO5 (Thắng 3 / 5 set)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-700 font-semibold block mb-1">
+                    Điểm mỗi set thường
+                  </label>
+                  <select
+                    value={pointsPerSet}
+                    onChange={(e) => setPointsPerSet(Number(e.target.value))}
+                    className="w-full bg-white border border-slate-200 text-emerald-800 font-bold text-xs rounded-xl p-2.5 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-xs"
+                  >
+                    {sportType === 'BADMINTON' ? (
+                      <>
+                        <option value={21}>21 điểm (Chuẩn BWF, tối đa 30)</option>
+                        <option value={15}>15 điểm (Đánh nhanh hội thao)</option>
+                        <option value={11}>11 điểm (Rút gọn)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value={25}>25 điểm (Chuẩn FIVB, cách 2đ)</option>
+                        <option value={21}>21 điểm (Hội thao rút gọn)</option>
+                        <option value={15}>15 điểm (Set nhanh)</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-700 font-semibold block mb-1">
+                    Điểm set quyết định (Set {bestOf})
+                  </label>
+                  <select
+                    value={decidingSetPoints}
+                    onChange={(e) => setDecidingSetPoints(Number(e.target.value))}
+                    className="w-full bg-white border border-slate-200 text-emerald-800 font-bold text-xs rounded-xl p-2.5 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-xs"
+                  >
+                    {sportType === 'BADMINTON' ? (
+                      <>
+                        <option value={21}>21 điểm (Như set thường)</option>
+                        <option value={15}>15 điểm</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value={15}>15 điểm (Chuẩn FIVB)</option>
+                        <option value={25}>25 điểm</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                {sportType === 'BADMINTON' && (
+                  <div>
+                    <label className="text-[11px] text-slate-700 font-semibold block mb-1">
+                      Nội dung thi đấu
+                    </label>
+                    <select
+                      value={badmintonCategory}
+                      onChange={(e) => setBadmintonCategory(e.target.value as BadmintonCategory)}
+                      className="w-full bg-white border border-slate-200 text-blue-700 font-bold text-xs rounded-xl p-2.5 focus:outline-none focus:border-blue-500 cursor-pointer shadow-xs"
+                    >
+                      <option value="MEN_SINGLES">Đơn Nam</option>
+                      <option value="WOMEN_SINGLES">Đơn Nữ</option>
+                      <option value="MEN_DOUBLES">Đôi Nam</option>
+                      <option value="WOMEN_DOUBLES">Đôi Nữ</option>
+                      <option value="MIXED_DOUBLES">Đôi Nam Nữ</option>
+                      <option value="TEAM_TIE">Đồng Đội (Nhiều nội dung)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[11px] text-emerald-900/80">
+                {sportType === 'VOLLEYBALL'
+                  ? '🏐 Xếp hạng chuẩn FIVB: Thắng 2-0/3-0/3-1 được 3đ; thắng 2-1/3-2 được 2đ (đội thua 1đ). Xét hiệu số set & điểm quả.'
+                  : '🏸 Quy tắc BWF: Thắng nhận 3đ, thua 0đ (không có hòa). Xét đối đầu → hiệu số ván → hiệu số điểm cầu.'}
+              </p>
+            </div>
+          )}
+
           {/* Cấu Hình Bảng Đấu & Số Đội */}
           {formatType === 'SINGLE_LEAGUE' ? (
             <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-3">
@@ -421,21 +681,24 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
 
                 <div>
                   <label className="text-[11px] text-slate-700 font-semibold block mb-1">
-                    Thời lượng 1 trận (2 hiệp đều)
+                    {sportType === 'FOOTBALL' ? 'Thời lượng 1 trận (2 hiệp đều)' : 'Thời lượng dự kiến 1 trận'}
                   </label>
                   <select
                     value={matchDurationMinutes}
                     onChange={(e) => setMatchDurationMinutes(Number(e.target.value))}
                     className="w-full bg-white border border-slate-200 text-emerald-700 font-bold text-xs rounded-xl p-2.5 focus:outline-none focus:border-emerald-500 cursor-pointer shadow-xs"
                   >
-                    <option value={60}>60 phút (2 × 30p, nghỉ 5p - Thể lệ CTUT)</option>
-                    <option value={50}>50 phút (2 × 25p, nghỉ 5p)</option>
-                    <option value={40}>40 phút (2 × 20p, nghỉ 5p)</option>
+                    <option value={60}>{sportType === 'FOOTBALL' ? '60 phút (2 × 30p, nghỉ 5p - Thể lệ CTUT)' : '60 phút / trận'}</option>
+                    <option value={50}>{sportType === 'FOOTBALL' ? '50 phút (2 × 25p, nghỉ 5p)' : '50 phút / trận'}</option>
+                    <option value={45}>45 phút / trận (Phù hợp Cầu lông / Bóng chuyền)</option>
+                    <option value={40}>{sportType === 'FOOTBALL' ? '40 phút (2 × 20p, nghỉ 5p)' : '40 phút / trận'}</option>
                   </select>
                 </div>
               </div>
               <p className="text-[11px] text-blue-800/80">
-                ⏱️ Đồng hồ chạy liên tục không bù giờ. Tối đa 2 đội thuộc cùng 1 Chi Đoàn. Không thi đấu Knockout.
+                {sportType === 'FOOTBALL'
+                  ? '⏱️ Đồng hồ chạy liên tục không bù giờ. Tối đa 2 đội thuộc cùng 1 Chi Đoàn. Không thi đấu Knockout.'
+                  : `${sportMeta.icon} Thể thức vòng tròn 1 lượt tính điểm toàn bảng, xếp hạng tự động theo luật ${sportMeta.label}.`}
               </p>
             </div>
           ) : (
@@ -512,9 +775,10 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
                     onChange={(e) => setMatchDurationMinutes(Number(e.target.value))}
                     className="w-full bg-white border border-slate-200 text-slate-900 font-mono font-bold text-xs rounded-xl p-2.5 focus:outline-none focus:border-blue-500 shadow-xs"
                   >
-                    <option value={40}>40 phút (2 × 20p)</option>
-                    <option value={50}>50 phút (2 × 25p)</option>
-                    <option value={60}>60 phút (2 × 30p)</option>
+                    <option value={40}>{sportType === 'FOOTBALL' ? '40 phút (2 × 20p)' : '40 phút / trận'}</option>
+                    <option value={45}>45 phút / trận</option>
+                    <option value={50}>{sportType === 'FOOTBALL' ? '50 phút (2 × 25p)' : '50 phút / trận'}</option>
+                    <option value={60}>{sportType === 'FOOTBALL' ? '60 phút (2 × 30p)' : '60 phút / trận'}</option>
                   </select>
                 </div>
               </div>
@@ -558,9 +822,10 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
               </div>
 
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Cầu thủ max/đội</label>
+                <label className="text-[11px] text-slate-500 block mb-1">{sportMeta.playerLabel} max/đội</label>
                 <input
                   type="number"
+                  min={1}
                   value={maxPlayersPerTeam}
                   onChange={(e) => setMaxPlayersPerTeam(Number(e.target.value))}
                   className="w-full bg-white border border-slate-200 text-slate-900 text-xs rounded-lg p-2 font-mono font-bold focus:border-blue-500 focus:outline-none"
@@ -568,7 +833,9 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
               </div>
 
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Nghỉ giữa hiệp (phút)</label>
+                <label className="text-[11px] text-slate-500 block mb-1">
+                  {sportType === 'FOOTBALL' ? 'Nghỉ giữa hiệp (phút)' : 'Nghỉ giữa set (phút)'}
+                </label>
                 <input
                   type="number"
                   value={breakDurationMinutes}

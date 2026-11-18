@@ -31,6 +31,32 @@ export type TournamentStatus =
   | 'FINAL'
   | 'COMPLETED';
 
+export type SportType = 'FOOTBALL' | 'BADMINTON' | 'VOLLEYBALL';
+
+export type BadmintonCategory =
+  | 'MEN_SINGLES'
+  | 'WOMEN_SINGLES'
+  | 'MEN_DOUBLES'
+  | 'WOMEN_DOUBLES'
+  | 'MIXED_DOUBLES'
+  | 'TEAM_TIE';
+
+export interface SportSetConfig {
+  bestOf: 3 | 5;
+  pointsPerSet: number;
+  decidingSetPoints: number;
+  winByTwo: boolean;
+  maxPointCap?: number;
+  badmintonCategory?: BadmintonCategory;
+}
+
+export interface MatchSetScore {
+  setNumber: number;
+  homePoints: number;
+  awayPoints: number;
+  winner?: 'HOME' | 'AWAY';
+}
+
 export type TournamentFormatType = 'SINGLE_LEAGUE' | 'GROUP_KNOCKOUT';
 
 export interface TeamBusyConstraint {
@@ -66,6 +92,8 @@ export interface Tournament {
   shortCode: string;
   year: number;
   organizer: string;
+  sportType?: SportType;
+  setConfig?: SportSetConfig;
   format: string;
   formatType?: TournamentFormatType;
   maxTeams: number;
@@ -93,7 +121,19 @@ export const getGroupLetters = (num: number = 4): string[] => {
 export type TeamStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN' | 'DISQUALIFIED';
 export type PaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED' | 'FORFEITED';
 
-export type PlayerPosition = 'GK' | 'DF' | 'MF' | 'FW';
+export type PlayerPosition =
+  | 'GK'
+  | 'DF'
+  | 'MF'
+  | 'FW'
+  | 'SINGLES'
+  | 'DOUBLES'
+  | 'MIXED'
+  | 'SETTER'
+  | 'OUTSIDE'
+  | 'MIDDLE'
+  | 'OPPOSITE'
+  | 'LIBERO';
 
 export interface Player {
   id: string;
@@ -166,7 +206,7 @@ export type CardType = 'YELLOW' | 'SECOND_YELLOW' | 'RED';
 export interface MatchEvent {
   id: string;
   matchId: string;
-  type: 'GOAL' | 'CARD' | 'SUBSTITUTION' | 'NOTE';
+  type: 'GOAL' | 'CARD' | 'SUBSTITUTION' | 'NOTE' | 'SET_WIN';
   minute: number;
   teamId: string;
   playerId?: string;
@@ -180,6 +220,8 @@ export interface MatchEvent {
   assistPlayerName?: string;
   isOwnGoal?: boolean;
   reason?: string;
+  setNumber?: number;
+  setScoreLabel?: string;
   timestamp: string;
 }
 
@@ -226,9 +268,12 @@ export interface Match {
   isLocked?: boolean;        // Khóa lịch khi tinh chỉnh để không bị xếp đè
   durationMinutes?: number;  // Thời lượng trận riêng (phút), bỏ trống nếu dùng mặc định giải
   breakDurationMinutes?: number; // Nghỉ giữa hiệp riêng (phút)
-  isForfeit?: boolean;       // Xử thua 0-3 (trễ quá 10 phút / bỏ trận)
+  isForfeit?: boolean;       // Xử thua 0-3 (hoặc 0-2 / 0-3 set tùy môn)
   forfeitedTeamId?: string;
   forfeitReason?: string;
+  sets?: MatchSetScore[];    // Tỷ số chi tiết từng set (Cầu lông / Bóng chuyền)
+  currentSet?: number;       // Set đang diễn ra (1..5)
+  badmintonCategory?: BadmintonCategory;
 }
 
 export interface GroupStanding {
@@ -240,13 +285,19 @@ export interface GroupStanding {
   won: number;    // T
   drawn: number;  // H
   lost: number;   // B
-  goalsFor: number;    // BT
-  goalsAgainst: number;// BB
-  goalDifference: number; // +/-
+  goalsFor: number;    // BT (hoặc Set/Ván thắng)
+  goalsAgainst: number;// BB (hoặc Set/Ván thua)
+  goalDifference: number; // +/- (hiệu số bàn hoặc hiệu số set)
   points: number; // Đ
   yellowCards: number; // Thẻ vàng vòng bảng
   redCards: number;    // Thẻ đỏ trực tiếp vòng bảng
   cardPoints: number;  // Điểm thẻ quy đổi (01 thẻ đỏ trực tiếp = 02 thẻ vàng)
+  setsWon?: number;
+  setsLost?: number;
+  setDifference?: number;
+  pointsFor?: number;
+  pointsAgainst?: number;
+  pointsDifference?: number;
   rank: number;
   needsBtcTieBreak?: boolean;
   btcTieBreakResolved?: boolean;
@@ -349,4 +400,207 @@ export interface AuditLog {
   target: string;
   details: string;
   reason?: string;
+}
+
+export interface SportMetaInfo {
+  sportType: SportType;
+  icon: string;
+  label: string;
+  fullLabel: string;
+  unitLabel: string;
+  unitShortLabel: string;
+  playerLabel: string;
+  venueLabel: string;
+  scoreLabel: string;
+  isSetSport: boolean;
+  defaultPosition: PlayerPosition;
+  positions: { value: PlayerPosition; label: string }[];
+  defaultSetConfig: SportSetConfig;
+}
+
+const DEFAULT_BADMINTON_SET_CONFIG: SportSetConfig = {
+  bestOf: 3,
+  pointsPerSet: 21,
+  decidingSetPoints: 21,
+  winByTwo: true,
+  maxPointCap: 30,
+  badmintonCategory: 'MEN_DOUBLES',
+};
+
+const DEFAULT_VOLLEYBALL_SET_CONFIG: SportSetConfig = {
+  bestOf: 3,
+  pointsPerSet: 25,
+  decidingSetPoints: 15,
+  winByTwo: true,
+};
+
+const DEFAULT_FOOTBALL_SET_CONFIG: SportSetConfig = {
+  bestOf: 3,
+  pointsPerSet: 21,
+  decidingSetPoints: 21,
+  winByTwo: true,
+};
+
+export function getSportMeta(sportType?: SportType): SportMetaInfo {
+  if (sportType === 'BADMINTON') {
+    return {
+      sportType: 'BADMINTON',
+      icon: '🏸',
+      label: 'Cầu Lông',
+      fullLabel: 'Cầu lông (Đơn / Đôi / Đồng đội)',
+      unitLabel: 'Đội / Cặp VĐV',
+      unitShortLabel: 'Đội/Cặp',
+      playerLabel: 'VĐV',
+      venueLabel: 'Sân cầu',
+      scoreLabel: 'Ván thắng',
+      isSetSport: true,
+      defaultPosition: 'DOUBLES',
+      positions: [
+        { value: 'SINGLES', label: 'Đánh Đơn (Singles)' },
+        { value: 'DOUBLES', label: 'Đánh Đôi (Doubles)' },
+        { value: 'MIXED', label: 'Đôi Nam Nữ (Mixed)' },
+      ],
+      defaultSetConfig: { ...DEFAULT_BADMINTON_SET_CONFIG },
+    };
+  }
+  if (sportType === 'VOLLEYBALL') {
+    return {
+      sportType: 'VOLLEYBALL',
+      icon: '🏐',
+      label: 'Bóng Chuyền',
+      fullLabel: 'Bóng chuyền (6 người / Hội thao)',
+      unitLabel: 'Đội bóng chuyền',
+      unitShortLabel: 'Đội',
+      playerLabel: 'VĐV',
+      venueLabel: 'Sân bóng chuyền',
+      scoreLabel: 'Set thắng',
+      isSetSport: true,
+      defaultPosition: 'OUTSIDE',
+      positions: [
+        { value: 'SETTER', label: 'Chuyền Hai (Setter)' },
+        { value: 'OUTSIDE', label: 'Chủ Công (Outside)' },
+        { value: 'MIDDLE', label: 'Phụ Công (Middle)' },
+        { value: 'OPPOSITE', label: 'Đối Chuyền (Opposite)' },
+        { value: 'LIBERO', label: 'Libero (Phòng thủ)' },
+      ],
+      defaultSetConfig: { ...DEFAULT_VOLLEYBALL_SET_CONFIG },
+    };
+  }
+  return {
+    sportType: 'FOOTBALL',
+    icon: '⚽',
+    label: 'Bóng Đá',
+    fullLabel: 'Bóng đá sân 5',
+    unitLabel: 'Đội bóng',
+    unitShortLabel: 'Đội',
+    playerLabel: 'Cầu thủ',
+    venueLabel: 'Sân bóng',
+    scoreLabel: 'Bàn thắng',
+    isSetSport: false,
+    defaultPosition: 'FW',
+    positions: [
+      { value: 'GK', label: 'Thủ Môn (GK)' },
+      { value: 'DF', label: 'Hậu Vệ (DF)' },
+      { value: 'MF', label: 'Tiền Vệ (MF)' },
+      { value: 'FW', label: 'Tiền Đạo (FW)' },
+    ],
+    defaultSetConfig: { ...DEFAULT_FOOTBALL_SET_CONFIG },
+  };
+}
+
+export function getBadmintonCategoryLabel(category?: BadmintonCategory): string {
+  switch (category) {
+    case 'MEN_SINGLES':
+      return 'Đơn Nam';
+    case 'WOMEN_SINGLES':
+      return 'Đơn Nữ';
+    case 'MEN_DOUBLES':
+      return 'Đôi Nam';
+    case 'WOMEN_DOUBLES':
+      return 'Đôi Nữ';
+    case 'MIXED_DOUBLES':
+      return 'Đôi Nam Nữ';
+    case 'TEAM_TIE':
+      return 'Đồng Đội';
+    default:
+      return 'Đôi / Đơn';
+  }
+}
+
+export function getEffectiveSetConfig(tournament?: Partial<Tournament>): SportSetConfig {
+  const meta = getSportMeta(tournament?.sportType);
+  return {
+    ...meta.defaultSetConfig,
+    ...(tournament?.setConfig || {}),
+  };
+}
+
+export function determineSetWinner(
+  homePoints: number,
+  awayPoints: number,
+  setNumber: number,
+  cfg: SportSetConfig
+): 'HOME' | 'AWAY' | undefined {
+  if (homePoints === awayPoints) return undefined;
+  const target = setNumber >= cfg.bestOf ? cfg.decidingSetPoints : cfg.pointsPerSet;
+  if (cfg.maxPointCap && (homePoints >= cfg.maxPointCap || awayPoints >= cfg.maxPointCap)) {
+    return homePoints > awayPoints ? 'HOME' : 'AWAY';
+  }
+  if (cfg.winByTwo) {
+    if (homePoints >= target && homePoints - awayPoints >= 2) return 'HOME';
+    if (awayPoints >= target && awayPoints - homePoints >= 2) return 'AWAY';
+    return undefined;
+  }
+  if (homePoints >= target && homePoints > awayPoints) return 'HOME';
+  if (awayPoints >= target && awayPoints > homePoints) return 'AWAY';
+  return undefined;
+}
+
+export function computeSetsSummary(
+  sets: MatchSetScore[] | undefined,
+  cfg: SportSetConfig
+): {
+  homeSetsWon: number;
+  awaySetsWon: number;
+  homeTotalPoints: number;
+  awayTotalPoints: number;
+  normalizedSets: MatchSetScore[];
+} {
+  let homeSetsWon = 0;
+  let awaySetsWon = 0;
+  let homeTotalPoints = 0;
+  let awayTotalPoints = 0;
+
+  const normalizedSets = (sets || []).map((s, idx) => {
+    const setNum = s.setNumber || idx + 1;
+    const h = Math.max(0, Number(s.homePoints) || 0);
+    const a = Math.max(0, Number(s.awayPoints) || 0);
+    homeTotalPoints += h;
+    awayTotalPoints += a;
+    const winner = s.winner || determineSetWinner(h, a, setNum, cfg);
+    if (winner === 'HOME') homeSetsWon += 1;
+    else if (winner === 'AWAY') awaySetsWon += 1;
+    return {
+      setNumber: setNum,
+      homePoints: h,
+      awayPoints: a,
+      ...(winner ? { winner } : {}),
+    };
+  });
+
+  return {
+    homeSetsWon,
+    awaySetsWon,
+    homeTotalPoints,
+    awayTotalPoints,
+    normalizedSets,
+  };
+}
+
+export function formatMatchSetsCompact(match?: Match): string {
+  if (!match || !Array.isArray(match.sets) || match.sets.length === 0) return '';
+  return match.sets
+    .filter((s) => s.homePoints > 0 || s.awayPoints > 0)
+    .map((s) => `${s.homePoints}-${s.awayPoints}`)
+    .join(', ');
 }

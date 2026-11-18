@@ -15,12 +15,24 @@ function formatTournamentProfile($row) {
             $scheduleCfg = $decoded;
         }
     }
+    $sportType = 'FOOTBALL';
+    if (isset($row['sport_type']) && $row['sport_type'] !== '') {
+        $sportType = (string)$row['sport_type'];
+    } elseif (is_array($scheduleCfg) && isset($scheduleCfg['sportType']) && $scheduleCfg['sportType'] !== '') {
+        $sportType = (string)$scheduleCfg['sportType'];
+    }
+    $setConfig = (is_array($scheduleCfg) && isset($scheduleCfg['setConfig']) && is_array($scheduleCfg['setConfig']))
+        ? $scheduleCfg['setConfig']
+        : null;
+
     return [
         'id' => $row['id'],
         'name' => $row['name'],
         'shortCode' => $row['short_code'],
         'year' => (int)$row['year'],
         'organizer' => $row['organizer'],
+        'sportType' => $sportType,
+        'setConfig' => $setConfig,
         'format' => $row['format'],
         'formatType' => isset($row['format_type']) && $row['format_type'] !== '' ? $row['format_type'] : 'SINGLE_LEAGUE',
         'maxTeams' => (int)$row['max_teams'],
@@ -177,6 +189,11 @@ switch ($action) {
         $btcTieBreaks = isset($body['btcTieBreaks']) && is_array($body['btcTieBreaks']) ? $body['btcTieBreaks'] : [];
         $paidFines = isset($body['paidFines']) && is_array($body['paidFines']) ? $body['paidFines'] : [];
         $scheduleConfig = isset($tour['scheduleConfig']) && is_array($tour['scheduleConfig']) ? $tour['scheduleConfig'] : [];
+        $sportType = isset($tour['sportType']) && $tour['sportType'] !== '' ? (string)$tour['sportType'] : 'FOOTBALL';
+        $scheduleConfig['sportType'] = $sportType;
+        if (isset($tour['setConfig']) && is_array($tour['setConfig'])) {
+            $scheduleConfig['setConfig'] = $tour['setConfig'];
+        }
         $formatType = isset($tour['formatType']) && $tour['formatType'] !== '' ? (string)$tour['formatType'] : 'SINGLE_LEAGUE';
         $status = isset($body['status']) ? (string)$body['status'] : (isset($tour['status']) ? (string)$tour['status'] : 'REGISTRATION');
         $version = (int)round(microtime(true) * 1000);
@@ -330,6 +347,8 @@ switch ($action) {
                         'shortCode' => isset($t['shortCode']) ? trim((string)$t['shortCode']) : $tourMeta['shortCode'],
                         'year' => isset($t['year']) ? (int)$t['year'] : $tourMeta['year'],
                         'organizer' => isset($t['organizer']) ? (string)$t['organizer'] : $tourMeta['organizer'],
+                        'sportType' => isset($t['sportType']) && $t['sportType'] !== '' ? (string)$t['sportType'] : $tourMeta['sportType'],
+                        'setConfig' => isset($t['setConfig']) && is_array($t['setConfig']) ? $t['setConfig'] : $tourMeta['setConfig'],
                         'format' => isset($t['format']) ? (string)$t['format'] : $tourMeta['format'],
                         'formatType' => isset($t['formatType']) ? (string)$t['formatType'] : $tourMeta['formatType'],
                         'maxTeams' => isset($t['maxTeams']) ? (int)$t['maxTeams'] : $tourMeta['maxTeams'],
@@ -430,7 +449,7 @@ switch ($action) {
                         }
                     }
                     if ($incomingMyTeam !== null && isset($incomingMyTeam['players']) && is_array($incomingMyTeam['players'])) {
-                        $maxPlayers = max(5, (int)$tourMeta['maxPlayersPerTeam']);
+                        $maxPlayers = max(2, (int)$tourMeta['maxPlayersPerTeam']);
                         if (count($incomingMyTeam['players']) > $maxPlayers) {
                             $pdo->rollBack();
                             jsonResponse(['ok' => false, 'error' => "Mỗi đội tối đa {$maxPlayers} cầu thủ!"], 400);
@@ -507,6 +526,12 @@ switch ($action) {
                 }
             }
 
+            $scheduleConfigForDb = is_array($tourMeta['scheduleConfig']) ? $tourMeta['scheduleConfig'] : [];
+            $scheduleConfigForDb['sportType'] = isset($tourMeta['sportType']) && $tourMeta['sportType'] !== '' ? (string)$tourMeta['sportType'] : 'FOOTBALL';
+            if (isset($tourMeta['setConfig']) && is_array($tourMeta['setConfig'])) {
+                $scheduleConfigForDb['setConfig'] = $tourMeta['setConfig'];
+            }
+
             $version = (int)round(microtime(true) * 1000);
             $upd = $pdo->prepare(
                 'UPDATE tournaments SET
@@ -542,7 +567,7 @@ switch ($action) {
                 $tourMeta['endDate'],
                 $status,
                 $tourMeta['description'],
-                json_encode(empty($tourMeta['scheduleConfig']) ? new stdClass() : $tourMeta['scheduleConfig'], JSON_UNESCAPED_UNICODE),
+                json_encode(empty($scheduleConfigForDb) ? new stdClass() : $scheduleConfigForDb, JSON_UNESCAPED_UNICODE),
                 json_encode($teams, JSON_UNESCAPED_UNICODE),
                 json_encode($matches, JSON_UNESCAPED_UNICODE),
                 json_encode($venues, JSON_UNESCAPED_UNICODE),

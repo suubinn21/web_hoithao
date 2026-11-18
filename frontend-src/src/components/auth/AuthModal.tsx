@@ -84,7 +84,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
     } catch {
       setLoading(false);
-      setErrorMsg('Đăng nhập không thành công. Vui lòng kiểm tra lại kết nối máy chủ!');
+      setErrorMsg('Đăng nhập không thành công. Vui lòng kiểm tra lại kết nối!');
     }
   };
 
@@ -141,11 +141,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
-                  ITFTMS 2026 Auth
+                  ITFTMS
                 </span>
               </div>
               <h2 className="text-lg font-black text-slate-900">
-                {tab === 'login' ? 'Đăng Nhập Tài Khoản' : 'Đăng Ký Tài Khoảng Người Xem'}
+                {tab === 'login' ? 'Đăng Nhập Tài Khoản' : 'Đăng Ký Tài Khoảng Người Xem '}
               </h2>
             </div>
           </div>
@@ -279,7 +279,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 hover:from-blue-700 hover:to-sky-700 text-white font-black text-sm shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
                 >
                   {loading ? (
-                    <span>⏳ Đang xác thực CSDL...</span>
+                    <span>⏳ Đang xác thực</span>
                   ) : (
                     <>
                       <LogIn className="w-4 h-4" />
@@ -407,7 +407,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 hover:from-blue-700 hover:to-sky-700 text-white font-bold text-sm shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 mt-2"
               >
                 {loading ? (
-                  <span>⏳ Đang lưu...</span>
+                  <span>Đang lưu...</span>
                 ) : (
                   <>
                     <UserPlus className="w-4 h-4" />

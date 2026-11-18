@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Match, Team } from '@/types';
+import { Match, Team, formatMatchSetsCompact } from '@/types';
 import { Trophy, Award, Sparkles, ChevronRight, Radio, MapPin } from 'lucide-react';
 
 interface BracketTreeProps {
@@ -127,7 +127,7 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
 
         {/* Away Team */}
         <div
-          className={`p-3 flex items-center justify-between rounded-b-2xl ${
+          className={`p-3 flex items-center justify-between ${formatMatchSetsCompact(match) ? 'border-b border-slate-100' : 'rounded-b-2xl'} ${
             isAwayWinner ? 'bg-emerald-50 text-emerald-800 font-black' : 'text-slate-800 font-semibold'
           }`}
         >
@@ -158,6 +158,11 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
             )}
           </div>
         </div>
+        {formatMatchSetsCompact(match) && (
+          <div className="px-3 py-1.5 bg-emerald-50/70 rounded-b-2xl text-[10px] font-mono font-bold text-emerald-800 text-center">
+            Set: {formatMatchSetsCompact(match)}
+          </div>
+        )}
       </div>
     );
   };

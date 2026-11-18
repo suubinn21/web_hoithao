@@ -266,10 +266,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
       u.role === 'REFEREE'
         ? 'Trọng Tài'
         : isBtc
-        ? 'Ban Tổ Chức (BTC)'
-        : u.role === 'TEAM_MANAGER'
-        ? `Đội Trưởng (${u.teamName || 'Đội bóng'})`
-        : 'Sinh Viên';
+          ? 'Ban Tổ Chức (BTC)'
+          : u.role === 'TEAM_MANAGER'
+            ? `Đội Trưởng (${u.teamName || 'Đội bóng'})`
+            : 'Sinh Viên';
 
     const lines = [
       `Tài khoản: @${u.username}`,
@@ -402,9 +402,6 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   Admin Control
                 </span>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-500">
-                Toàn bộ tài khoản được lưu trong bảng MySQL `users` và mã hóa Bcrypt (không dùng mật khẩu mặc định)
-              </p>
             </div>
           </div>
 
@@ -421,11 +418,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('list')}
-              className={`px-4 py-2.5 rounded-t-xl text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
-                activeTab === 'list'
-                  ? 'border-blue-600 text-blue-700 bg-white font-black'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-4 py-2.5 rounded-t-xl text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'list'
+                ? 'border-blue-600 text-blue-700 bg-white font-black'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
             >
               <Users className="w-4 h-4" />
               <span>Danh Sách Tài Khoản</span>
@@ -440,11 +436,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                 setErrorMsg(null);
                 setSuccessCreatedInfo(null);
               }}
-              className={`px-4 py-2.5 rounded-t-xl text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${
-                activeTab === 'create'
-                  ? 'border-blue-600 text-blue-700 bg-white font-black'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-4 py-2.5 rounded-t-xl text-xs font-bold border-b-2 transition-all flex items-center gap-2 ${activeTab === 'create'
+                ? 'border-blue-600 text-blue-700 bg-white font-black'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
             >
               <UserPlus className="w-4 h-4 text-blue-600" />
               <span>Tạo Tài Khoản Mới</span>
@@ -482,54 +477,49 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs">
                   <button
                     onClick={() => setFilterRole('ALL')}
-                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
-                      filterRole === 'ALL'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${filterRole === 'ALL'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200'
+                      }`}
                   >
                     Tất cả ({users.length})
                   </button>
                   <button
                     onClick={() => setFilterRole('ORGANIZER')}
-                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                      filterRole === 'ORGANIZER'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 ${filterRole === 'ORGANIZER'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                      }`}
                   >
                     <ShieldCheck className="w-3.5 h-3.5" />
                     <span>BTC ({btcCount})</span>
                   </button>
                   <button
                     onClick={() => setFilterRole('REFEREE')}
-                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
-                      filterRole === 'REFEREE'
-                        ? 'bg-amber-600 text-white'
-                        : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 ${filterRole === 'REFEREE'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
+                      }`}
                   >
                     <Scale className="w-3.5 h-3.5" />
                     <span>Trọng Tài ({refereeCount})</span>
                   </button>
                   <button
                     onClick={() => setFilterRole('TEAM_MANAGER')}
-                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
-                      filterRole === 'TEAM_MANAGER'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${filterRole === 'TEAM_MANAGER'
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                      }`}
                   >
                     Đội Trưởng ({captainCount})
                   </button>
                   {studentCount > 0 && (
                     <button
                       onClick={() => setFilterRole('STUDENT')}
-                      className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${
-                        filterRole === 'STUDENT'
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors ${filterRole === 'STUDENT'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
+                        }`}
                     >
                       Sinh Viên ({studentCount})
                     </button>
@@ -562,21 +552,19 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                     return (
                       <div
                         key={u.id}
-                        className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 bg-white shadow-xs ${
-                          isReferee
-                            ? 'border-amber-200 hover:border-amber-400'
-                            : isBTC
+                        className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 bg-white shadow-xs ${isReferee
+                          ? 'border-amber-200 hover:border-amber-400'
+                          : isBTC
                             ? 'border-blue-200 hover:border-blue-400'
                             : 'border-slate-200 hover:border-slate-300'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-start gap-3">
                           <img
                             src={u.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${u.username}`}
                             alt={u.fullName}
-                            className={`w-11 h-11 rounded-2xl object-cover border-2 shrink-0 ${
-                              isReferee ? 'border-amber-300' : isBTC ? 'border-blue-300' : 'border-slate-200'
-                            }`}
+                            className={`w-11 h-11 rounded-2xl object-cover border-2 shrink-0 ${isReferee ? 'border-amber-300' : isBTC ? 'border-blue-300' : 'border-slate-200'
+                              }`}
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -593,25 +581,24 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className="font-mono text-xs font-bold text-blue-600">@{u.username}</span>
                               <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
-                                  isReferee
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                    : isBTC
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${isReferee
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : isBTC
                                     ? 'bg-blue-50 text-blue-700 border-blue-200'
                                     : isCaptain
-                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                    : 'bg-purple-50 text-purple-700 border-purple-200'
-                                }`}
+                                      ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                      : 'bg-purple-50 text-purple-700 border-purple-200'
+                                  }`}
                               >
                                 {u.role === 'SUPER_ADMIN'
                                   ? 'Super Admin'
                                   : isBTC
-                                  ? 'Ban Tổ Chức'
-                                  : isReferee
-                                  ? 'Trọng Tài'
-                                  : isCaptain
-                                  ? `Đội: ${u.teamName || u.teamId || 'Đội bóng'}`
-                                  : 'Sinh Viên'}
+                                    ? 'Ban Tổ Chức'
+                                    : isReferee
+                                      ? 'Trọng Tài'
+                                      : isCaptain
+                                        ? `Đội: ${u.teamName || u.teamId || 'Đội bóng'}`
+                                        : 'Sinh Viên'}
                               </span>
                             </div>
 
@@ -753,11 +740,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div
                       onClick={() => setTargetRole('REFEREE')}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-2.5 ${
-                        targetRole === 'REFEREE'
-                          ? 'bg-amber-50/70 border-amber-400 ring-1 ring-amber-400'
-                          : 'bg-white border-slate-200 hover:border-slate-300 opacity-85'
-                      }`}
+                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-2.5 ${targetRole === 'REFEREE'
+                        ? 'bg-amber-50/70 border-amber-400 ring-1 ring-amber-400'
+                        : 'bg-white border-slate-200 hover:border-slate-300 opacity-85'
+                        }`}
                     >
                       <Scale className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                       <div>
@@ -768,11 +754,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
                     <div
                       onClick={() => setTargetRole('TEAM_MANAGER')}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-2.5 ${
-                        targetRole === 'TEAM_MANAGER'
-                          ? 'bg-indigo-50/70 border-indigo-400 ring-1 ring-indigo-400'
-                          : 'bg-white border-slate-200 hover:border-slate-300 opacity-85'
-                      }`}
+                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-2.5 ${targetRole === 'TEAM_MANAGER'
+                        ? 'bg-indigo-50/70 border-indigo-400 ring-1 ring-indigo-400'
+                        : 'bg-white border-slate-200 hover:border-slate-300 opacity-85'
+                        }`}
                     >
                       <Flag className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                       <div>
@@ -783,11 +768,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
                     <div
                       onClick={() => setTargetRole('ORGANIZER')}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-2.5 ${
-                        targetRole === 'ORGANIZER'
-                          ? 'bg-blue-50/70 border-blue-500 ring-1 ring-blue-500'
-                          : 'bg-white border-slate-200 hover:border-slate-300 opacity-85'
-                      }`}
+                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-start gap-2.5 ${targetRole === 'ORGANIZER'
+                        ? 'bg-blue-50/70 border-blue-500 ring-1 ring-blue-500'
+                        : 'bg-white border-slate-200 hover:border-slate-300 opacity-85'
+                        }`}
                     >
                       <ShieldCheck className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                       <div>
@@ -991,13 +975,12 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   <button
                     type="submit"
                     disabled={submitting}
-                    className={`w-full py-3 rounded-xl font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 ${
-                      targetRole === 'REFEREE'
-                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
-                        : targetRole === 'TEAM_MANAGER'
+                    className={`w-full py-3 rounded-xl font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 ${targetRole === 'REFEREE'
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
+                      : targetRole === 'TEAM_MANAGER'
                         ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white'
                         : 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white'
-                    }`}
+                      }`}
                   >
                     <UserPlus className="w-4 h-4" />
                     <span>{submitting ? 'Đang lưu vào MySQL...' : 'Xác Nhận Tạo Tài Khoản Trong CSDL'}</span>

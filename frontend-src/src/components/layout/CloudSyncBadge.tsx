@@ -30,8 +30,8 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({
   const baseSizeClass = isCompact
     ? 'text-[10px] px-2 py-0.5 rounded-full gap-1'
     : isHeader
-    ? 'hidden lg:flex min-h-[40px] px-3 rounded-xl gap-1.5 text-xs'
-    : 'flex min-h-[44px] px-2.5 sm:px-3 rounded-xl gap-1.5 text-[11px] sm:text-xs';
+      ? 'hidden lg:flex min-h-[40px] px-3 rounded-xl gap-1.5 text-xs'
+      : 'flex min-h-[44px] px-2.5 sm:px-3 rounded-xl gap-1.5 text-[11px] sm:text-xs';
 
   if (needsReauth && pendingCount > 0) {
     return (
@@ -57,7 +57,7 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({
         className={`${baseSizeClass} items-center border font-semibold shadow-xs transition-all shrink-0 whitespace-nowrap bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100 active:scale-95`}
         title={
           lastError
-            ? `${lastError} — Dữ liệu đang được giữ an toàn trên máy. Bấm để thử đẩy lên MySQL ngay.`
+            ? `${lastError} — Dữ liệu đang được giữ an toàn trên máy. Bấm để tải lại lên cơ sở dữ liệu.`
             : `Đang giữ ${pendingCount} thay đổi chờ đồng bộ lên MySQL. Bấm để thử gửi ngay.`
         }
       >
@@ -89,15 +89,14 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({
 
   return (
     <div
-      className={`${baseSizeClass} items-center border font-semibold shadow-xs transition-all shrink-0 whitespace-nowrap ${
-        isConnecting
+      className={`${baseSizeClass} items-center border font-semibold shadow-xs transition-all shrink-0 whitespace-nowrap ${isConnecting
           ? 'bg-amber-50 border-amber-200 text-amber-700'
           : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-      }`}
+        }`}
       title={
         isConnecting
-          ? 'Đang kết nối đến CSDL MySQL...'
-          : 'MySQL Hosting Sync: Dữ liệu đang kết nối và đồng bộ trực tiếp với CSDL MySQL'
+          ? 'Đang kết nối đến CSDL ...'
+          : 'Dữ liệu đang kết nối và đồng bộ trực tiếp với CSDL'
       }
     >
       <span className="relative flex h-2 w-2 shrink-0">
@@ -105,9 +104,8 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
         )}
         <span
-          className={`relative inline-flex rounded-full h-2 w-2 ${
-            isConnecting ? 'bg-amber-500' : 'bg-emerald-500'
-          }`}
+          className={`relative inline-flex rounded-full h-2 w-2 ${isConnecting ? 'bg-amber-500' : 'bg-emerald-500'
+            }`}
         ></span>
       </span>
       {!isCompact && <Cloud className="w-3.5 h-3.5 shrink-0" />}
@@ -144,7 +142,7 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>
-              <strong>Phiên đăng nhập hết hạn:</strong> Còn <strong>{pendingCount}</strong> thay đổi được lưu an toàn trên thiết bị. Đăng nhập lại để tự đồng bộ lên MySQL.
+              <strong>Phiên đăng nhập hết hạn:</strong> Còn <strong>{pendingCount}</strong> thay đổi được lưu an toàn trên thiết bị. Đăng nhập lại để tự đồng bộ .
             </span>
           </div>
           {onRequestAuth && (
@@ -168,7 +166,7 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
           <div className="flex items-center gap-2 font-medium">
             <RefreshCw className={`w-4 h-4 text-amber-600 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>
-              <strong>Đang chờ đồng bộ ({pendingCount}):</strong> Mạng yếu/mất sóng — thay đổi đã được lưu an toàn trên máy và sẽ tự đẩy lên MySQL khi có mạng.
+              <strong>Đang chờ đồng bộ ({pendingCount}):</strong> Mạng yếu/mất sóng — thay đổi đã được lưu an toàn trên máy và sẽ tự đẩy lên CSDL khi có mạng.
               {lastError ? <span className="text-amber-700 hidden sm:inline"> ({lastError})</span> : null}
             </span>
           </div>
@@ -199,7 +197,7 @@ export const OfflineSyncBanner: React.FC<OfflineSyncBannerProps> = ({
           onClick={onRetrySync}
           className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold text-[11px] shrink-0 transition-colors"
         >
-          Thử lại
+          Thử lại!
         </button>
       </div>
     </div>

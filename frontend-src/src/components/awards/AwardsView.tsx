@@ -6,16 +6,16 @@ import { TournamentAward, UserRole, Match, Team, Tournament } from '@/types';
 import { StorageService } from '@/services/storage';
 import { SoundFX } from '@/utils/soundEffects';
 import { RankingEngine, KnockoutPlayerScorer } from '@/services/rankingEngine';
-import { 
-  Trophy, 
-  Award, 
-  Sparkles, 
-  Edit3, 
-  CheckCircle2, 
-  Plus, 
-  Trash2, 
-  X, 
-  Check, 
+import {
+  Trophy,
+  Award,
+  Sparkles,
+  Edit3,
+  CheckCircle2,
+  Plus,
+  Trash2,
+  X,
+  Check,
   AlertTriangle,
   Image as ImageIcon,
   Star,
@@ -147,23 +147,23 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
     const existing = awards.find((a) => a.code === 'BEST_PLAYER');
     const updatedAwards = existing
       ? awards.map((a) =>
-          a.code === 'BEST_PLAYER'
-            ? { ...a, title: `⚽ Vua Phá Lưới (${scorer.goals} Bàn)`, recipientName: formattedRecipient, recipientTeam: scorer.teamName }
-            : a
-        )
+        a.code === 'BEST_PLAYER'
+          ? { ...a, title: ` Vua Phá Lưới (${scorer.goals} Bàn)`, recipientName: formattedRecipient, recipientTeam: scorer.teamName }
+          : a
+      )
       : [
-          ...awards,
-          {
-            id: 'AW-04',
-            code: 'BEST_PLAYER' as const,
-            title: `⚽ Vua Phá Lưới (${scorer.goals} Bàn)`,
-            recipientName: formattedRecipient,
-            recipientTeam: scorer.teamName,
-            prizeMoney: 300000,
-            icon: '⚽',
-            customImage: '/images/golden-boot.jpg',
-          },
-        ];
+        ...awards,
+        {
+          id: 'AW-04',
+          code: 'BEST_PLAYER' as const,
+          title: `Vua Phá Lưới (${scorer.goals} Bàn)`,
+          recipientName: formattedRecipient,
+          recipientTeam: scorer.teamName,
+          prizeMoney: 300000,
+          icon: '',
+          customImage: '/images/golden-boot.jpg',
+        },
+      ];
     onAwardsUpdate(updatedAwards);
     StorageService.saveAwards(updatedAwards);
     SoundFX.playGoalFanfare();
@@ -182,18 +182,18 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
     if (existing) {
       existing.recipientName = formattedRecipient;
       existing.recipientTeam = target.teamName;
-      existing.title = `⭐ Cầu Thủ Xuất Sắc Nhất (Knock-out: ${target.knockoutGoals} Bàn)`;
+      existing.title = ` Cầu Thủ Xuất Sắc Nhất (Knock-out: ${target.knockoutGoals} Bàn)`;
       existing.customImage = target.avatarUrl || '/images/tournament-hero.jpg';
       updatedAwards = [...awards];
     } else {
       const newAward: TournamentAward = {
         id: 'AW-04',
         code: 'BEST_PLAYER',
-        title: `⭐ Cầu Thủ Xuất Sắc Nhất (Knock-out: ${target.knockoutGoals} Bàn)`,
+        title: ` Cầu Thủ Xuất Sắc Nhất (Knock-out: ${target.knockoutGoals} Bàn)`,
         recipientName: formattedRecipient,
         recipientTeam: target.teamName,
-        prizeMoney: 1000000,
-        icon: '⭐',
+        prizeMoney: 0,
+        icon: '',
         customImage: target.avatarUrl || '/images/tournament-hero.jpg',
       };
       updatedAwards = [...awards, newAward];
@@ -354,7 +354,7 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
 
   return (
     <div className="space-y-8">
-      
+
       {/* Top Banner Card */}
       <div className="relative rounded-3xl overflow-hidden border border-slate-200 bg-white p-6 sm:p-8 shadow-xs">
         <div className="absolute inset-0 bg-gradient-to-r from-amber-50/40 via-sky-50/20 to-slate-50/60 pointer-events-none" />
@@ -410,7 +410,7 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
         </h3>
 
         <div className="flex flex-col sm:flex-row items-end justify-center gap-4 sm:gap-6 pt-10">
-          
+
           {/* 2nd Place (Silver) */}
           <div className="w-full sm:w-64 flex flex-col items-center order-2 sm:order-1">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-200 to-slate-400 shadow-md flex items-center justify-center text-3xl mb-3 border-2 border-slate-300">
@@ -445,10 +445,10 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
           <div className="w-full sm:w-72 flex flex-col items-center order-1 sm:order-2">
             {/* Real Champion Cup Trophy Photo */}
             <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-amber-400 shadow-xl shadow-amber-500/30 mb-3 relative group">
-              <img 
-                src="/images/trophy-cup.jpg" 
-                alt="Cúp Vô Địch" 
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+              <img
+                src="/images/trophy-cup.jpg"
+                alt="Cúp Vô Địch"
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
               <span className="absolute bottom-1 inset-x-0 text-center text-[10px] font-black font-mono text-amber-300 drop-shadow">CÚP VÀNG</span>
@@ -585,259 +585,257 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
           )}
         </div>
       ) : (
-      <div className="bg-white border border-amber-200/90 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6 relative overflow-hidden">
-        {/* Glow Accent Background */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-sky-100/40 rounded-full blur-3xl pointer-events-none" />
+        <div className="bg-white border border-amber-200/90 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6 relative overflow-hidden">
+          {/* Glow Accent Background */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-100/40 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-sky-100/40 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Section Header */}
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span className="bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[11px] font-black px-3 py-0.5 rounded-full shadow-xs flex items-center gap-1.5">
-                <Star className="w-3.5 h-3.5 fill-current" />
-                <span>DANH HIỆU ĐẶC BIỆT</span>
-              </span>
-              <span className="text-[11px] text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 font-mono font-bold">
-                TÍNH BÀN THẮNG TỪ VÒNG KNOCK-OUT
-              </span>
+          {/* Section Header */}
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                <span className="bg-gradient-to-r from-amber-500 to-yellow-600 text-white text-[11px] font-black px-3 py-0.5 rounded-full shadow-xs flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5 fill-current" />
+                  <span>DANH HIỆU ĐẶC BIỆT</span>
+                </span>
+                <span className="text-[11px] text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 font-mono font-bold">
+                  TÍNH BÀN THẮNG TỪ VÒNG KNOCK-OUT
+                </span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2.5">
+                <span>⭐ Cầu Thủ Xuất Sắc Nhất Giải (Knock-out MVP)</span>
+              </h3>
+              <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
+                Xác định dựa trên tổng số bàn thắng ghi được trong các trận loại trực tiếp:
+                <span className="text-amber-700 font-bold"> Tứ Kết ➔ Bán Kết ➔ Tranh Hạng 3 &amp; Chung Kết</span>.
+              </p>
             </div>
-            <h3 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2.5">
-              <span>⭐ Cầu Thủ Xuất Sắc Nhất Giải (Knock-out MVP)</span>
-            </h3>
-            <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-              Xác định dựa trên tổng số bàn thắng ghi được trong các trận loại trực tiếp: 
-              <span className="text-amber-700 font-bold"> Tứ Kết ➔ Bán Kết ➔ Tranh Hạng 3 &amp; Chung Kết</span>.
-            </p>
+
+            {/* Quick Auto-Award Button for BTC */}
+            {canEdit && topKnockoutMvp && (
+              <button
+                onClick={() => handleAutoAwardKnockoutMvp(topKnockoutMvp)}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-yellow-600 text-white font-black text-xs shadow-md shadow-amber-500/20 transition-all flex items-center gap-2 active:scale-95 shrink-0 self-start md:self-auto"
+              >
+                <Zap className="w-4 h-4 fill-current" />
+                <span>⚡ Tự Động Vinh Danh Cầu Thủ Này Vào Bảng Vàng</span>
+              </button>
+            )}
           </div>
 
-          {/* Quick Auto-Award Button for BTC */}
-          {canEdit && topKnockoutMvp && (
-            <button
-              onClick={() => handleAutoAwardKnockoutMvp(topKnockoutMvp)}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-yellow-600 text-white font-black text-xs shadow-md shadow-amber-500/20 transition-all flex items-center gap-2 active:scale-95 shrink-0 self-start md:self-auto"
-            >
-              <Zap className="w-4 h-4 fill-current" />
-              <span>⚡ Tự Động Vinh Danh Cầu Thủ Này Vào Bảng Vàng</span>
-            </button>
-          )}
-        </div>
+          {/* Hero Card for Current #1 Player */}
+          <div className="relative z-10">
+            {/* Player Spotlight Card */}
+            <div className="w-full bg-slate-50 border border-amber-200 rounded-2xl p-5 sm:p-6 shadow-xs relative overflow-hidden">
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
 
-        {/* Hero Card for Current #1 Player */}
-        <div className="relative z-10">
-          {/* Player Spotlight Card */}
-          <div className="w-full bg-slate-50 border border-amber-200 rounded-2xl p-5 sm:p-6 shadow-xs relative overflow-hidden">
-            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-              
-              {/* Player Image / Avatar */}
-              <div className="relative shrink-0">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-amber-400 shadow-md bg-white">
-                  <img
-                    src={topKnockoutMvp?.avatarUrl || '/images/tournament-hero.jpg'}
-                    alt={topKnockoutMvp?.playerName || 'Cầu thủ xuất sắc'}
-                    className="w-full h-full object-cover"
-                  />
+                {/* Player Image / Avatar */}
+                <div className="relative shrink-0">
+                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl overflow-hidden border-2 border-amber-400 shadow-md bg-white">
+                    <img
+                      src={topKnockoutMvp?.avatarUrl || '/images/tournament-hero.jpg'}
+                      alt={topKnockoutMvp?.playerName || 'Cầu thủ xuất sắc'}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="absolute -top-2 -left-2 w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-yellow-600 text-slate-950 font-black flex items-center justify-center text-xs shadow-md border border-white">
+                    #1
+                  </div>
                 </div>
-                <div className="absolute -top-2 -left-2 w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-yellow-600 text-slate-950 font-black flex items-center justify-center text-xs shadow-md border border-white">
-                  #1
-                </div>
-              </div>
 
-              {/* Player Details */}
-              <div className="flex-1 text-center sm:text-left space-y-2 min-w-0">
-                <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
-                  <span className="text-[10px] font-mono font-black uppercase text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300">
-                    DẪN ĐẦU GHI BÀN KNOCK-OUT
-                  </span>
-                  {bestPlayerAward?.recipientName && bestPlayerAward.recipientName.includes(topKnockoutMvp?.playerName || '---') && (
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>ĐÃ VINH DANH</span>
+                {/* Player Details */}
+                <div className="flex-1 text-center sm:text-left space-y-2 min-w-0">
+                  <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono font-black uppercase text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300">
+                      DẪN ĐẦU GHI BÀN KNOCK-OUT
                     </span>
+                    {bestPlayerAward?.recipientName && bestPlayerAward.recipientName.includes(topKnockoutMvp?.playerName || '---') && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>ĐÃ VINH DANH</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <h4 className="text-lg sm:text-2xl font-black text-slate-900 truncate">
+                    {topKnockoutMvp ? (
+                      <>
+                        {topKnockoutMvp.playerName}
+                        {topKnockoutMvp.jerseyNumber ? ` (#${topKnockoutMvp.jerseyNumber})` : ''}
+                      </>
+                    ) : (
+                      'Chờ Kết Quả Vòng Knock-out'
+                    )}
+                  </h4>
+
+                  <p className="text-xs text-slate-600 font-medium">
+                    {topKnockoutMvp ? (
+                      <>
+                        Đội: <span className="text-blue-700 font-bold">{topKnockoutMvp.teamName}</span>
+                        {topKnockoutMvp.class ? ` • Lớp ${topKnockoutMvp.class}` : ''}
+                      </>
+                    ) : (
+                      'Hệ thống sẽ tự động cập nhật ngay khi các trận Tứ kết diễn ra'
+                    )}
+                  </p>
+
+                  {/* Score & Goal Badges */}
+                  {topKnockoutMvp ? (
+                    <div className="pt-2 flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                      <div className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-black flex items-center gap-1.5">
+                        <Flame className="w-4 h-4 text-amber-500 fill-current" />
+                        <span>{topKnockoutMvp.knockoutGoals} Bàn Thắng Knock-out</span>
+                      </div>
+
+                      <div className="px-3 py-1.5 rounded-xl bg-sky-50 border border-sky-300 text-sky-900 text-xs font-bold flex items-center gap-1.5">
+                        <Target className="w-3.5 h-3.5 text-sky-600" />
+                        <span>{topKnockoutMvp.knockoutAssists} Kiến tạo</span>
+                      </div>
+
+                      <div className="px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-300 text-indigo-900 text-xs font-mono font-bold flex items-center gap-1.5">
+                        <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>{topKnockoutMvp.points} Điểm phong độ</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200">
+                      💡 Chưa có bàn thắng nào được ghi ở vòng loại trực tiếp (Tứ kết, Bán kết, Chung kết).
+                    </div>
                   )}
                 </div>
-
-                <h4 className="text-lg sm:text-2xl font-black text-slate-900 truncate">
-                  {topKnockoutMvp ? (
-                    <>
-                      {topKnockoutMvp.playerName}
-                      {topKnockoutMvp.jerseyNumber ? ` (#${topKnockoutMvp.jerseyNumber})` : ''}
-                    </>
-                  ) : (
-                    'Chờ Kết Quả Vòng Knock-out'
-                  )}
-                </h4>
-
-                <p className="text-xs text-slate-600 font-medium">
-                  {topKnockoutMvp ? (
-                    <>
-                      Đội: <span className="text-blue-700 font-bold">{topKnockoutMvp.teamName}</span>
-                      {topKnockoutMvp.class ? ` • Lớp ${topKnockoutMvp.class}` : ''}
-                    </>
-                  ) : (
-                    'Hệ thống sẽ tự động cập nhật ngay khi các trận Tứ kết diễn ra'
-                  )}
-                </p>
-
-                {/* Score & Goal Badges */}
-                {topKnockoutMvp ? (
-                  <div className="pt-2 flex items-center justify-center sm:justify-start gap-2 flex-wrap">
-                    <div className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-black flex items-center gap-1.5">
-                      <Flame className="w-4 h-4 text-amber-500 fill-current" />
-                      <span>{topKnockoutMvp.knockoutGoals} Bàn Thắng Knock-out</span>
-                    </div>
-
-                    <div className="px-3 py-1.5 rounded-xl bg-sky-50 border border-sky-300 text-sky-900 text-xs font-bold flex items-center gap-1.5">
-                      <Target className="w-3.5 h-3.5 text-sky-600" />
-                      <span>{topKnockoutMvp.knockoutAssists} Kiến tạo</span>
-                    </div>
-
-                    <div className="px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-300 text-indigo-900 text-xs font-mono font-bold flex items-center gap-1.5">
-                      <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>{topKnockoutMvp.points} Điểm phong độ</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200">
-                    💡 Chưa có bàn thắng nào được ghi ở vòng loại trực tiếp (Tứ kết, Bán kết, Chung kết).
-                  </div>
-                )}
               </div>
+
+              {/* Breakdown per Knockout Round */}
+              {topKnockoutMvp && (
+                <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-4 gap-2 text-center text-[11px]">
+                  <div className="bg-white p-2 rounded-xl border border-slate-200">
+                    <div className="text-slate-500 text-[10px]">Tứ Kết</div>
+                    <div className="text-sm font-black text-slate-900 mt-0.5">{topKnockoutMvp.quarterGoals} bàn</div>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200">
+                    <div className="text-slate-500 text-[10px]">Bán Kết</div>
+                    <div className="text-sm font-black text-amber-600 mt-0.5">{topKnockoutMvp.semiGoals} bàn</div>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200">
+                    <div className="text-slate-500 text-[10px]">Chung Kết</div>
+                    <div className="text-sm font-black text-yellow-600 mt-0.5">{topKnockoutMvp.finalGoals} bàn</div>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200">
+                    <div className="text-slate-500 text-[10px]">Tranh Hạng 3</div>
+                    <div className="text-sm font-black text-slate-700 mt-0.5">{topKnockoutMvp.thirdPlaceGoals} bàn</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Knockout Goal Scorers Leaderboard Table */}
+          <div className="relative z-10 space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs sm:text-sm font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
+                <Trophy className="w-4 h-4 text-amber-500" />
+                <span>Bảng Xếp Hạng Ghi Bàn Vòng Knock-out ({knockoutBestPlayers.length} Cầu thủ)</span>
+              </h4>
+              <span className="text-[10px] text-slate-500 font-medium">Tứ kết ➔ Bán kết ➔ Chung kết</span>
             </div>
 
-            {/* Breakdown per Knockout Round */}
-            {topKnockoutMvp && (
-              <div className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-4 gap-2 text-center text-[11px]">
-                <div className="bg-white p-2 rounded-xl border border-slate-200">
-                  <div className="text-slate-500 text-[10px]">Tứ Kết</div>
-                  <div className="text-sm font-black text-slate-900 mt-0.5">{topKnockoutMvp.quarterGoals} bàn</div>
-                </div>
-                <div className="bg-white p-2 rounded-xl border border-slate-200">
-                  <div className="text-slate-500 text-[10px]">Bán Kết</div>
-                  <div className="text-sm font-black text-amber-600 mt-0.5">{topKnockoutMvp.semiGoals} bàn</div>
-                </div>
-                <div className="bg-white p-2 rounded-xl border border-slate-200">
-                  <div className="text-slate-500 text-[10px]">Chung Kết</div>
-                  <div className="text-sm font-black text-yellow-600 mt-0.5">{topKnockoutMvp.finalGoals} bàn</div>
-                </div>
-                <div className="bg-white p-2 rounded-xl border border-slate-200">
-                  <div className="text-slate-500 text-[10px]">Tranh Hạng 3</div>
-                  <div className="text-sm font-black text-slate-700 mt-0.5">{topKnockoutMvp.thirdPlaceGoals} bàn</div>
-                </div>
+            {knockoutBestPlayers.length === 0 ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center text-xs text-slate-600 space-y-1">
+                <p className="font-medium">Chưa có cầu thủ nào ghi bàn ở vòng Knock-out.</p>
+                <p className="text-[11px] text-slate-500">
+                  Khi các trận đấu Tứ kết (15:00) và Bán kết (15:55) diễn ra và có bàn thắng, danh sách sẽ tự động xếp hạng tại đây.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xs">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px]">
+                    <tr>
+                      <th className="py-2.5 px-3 text-center w-12">HẠNG</th>
+                      <th className="py-2.5 px-3">CẦU THỦ</th>
+                      <th className="py-2.5 px-3">ĐỘI BÓNG</th>
+                      <th className="py-2.5 px-3 text-center font-black text-amber-700" title="Bàn thắng vòng Knock-out">
+                        BÀN KNOCK-OUT
+                      </th>
+                      <th className="py-2.5 px-2 text-center text-slate-600" title="Bàn thắng Tứ kết">TỨ KẾT</th>
+                      <th className="py-2.5 px-2 text-center text-amber-700" title="Bàn thắng Bán kết">BÁN KẾT</th>
+                      <th className="py-2.5 px-2 text-center text-yellow-700" title="Bàn thắng Chung kết">CHUNG KẾT</th>
+                      <th className="py-2.5 px-2 text-center text-blue-700" title="Kiến tạo">KIẾN TẠO</th>
+                      <th className="py-2.5 px-3 text-center font-mono text-indigo-700" title="Điểm phong độ">ĐIỂM</th>
+                      {canEdit && <th className="py-2.5 px-3 text-center">THAO TÁC</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {knockoutBestPlayers.map((player) => {
+                      const isMvp = player.rank === 1 && player.knockoutGoals > 0;
+
+                      return (
+                        <tr
+                          key={player.playerId}
+                          className={`hover:bg-slate-50 transition-colors ${isMvp ? 'bg-amber-50/60 font-bold' : ''
+                            }`}
+                        >
+                          <td className="py-2.5 px-3 text-center">
+                            <span
+                              className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-black text-xs font-mono ${player.rank === 1
+                                  ? 'bg-amber-400 text-slate-950'
+                                  : player.rank === 2
+                                    ? 'bg-slate-200 text-slate-800'
+                                    : player.rank === 3
+                                      ? 'bg-amber-200 text-amber-900'
+                                      : 'text-slate-500'
+                                }`}
+                            >
+                              {player.rank}
+                            </span>
+                          </td>
+
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-900 text-xs">{player.playerName}</span>
+                              {player.jerseyNumber && (
+                                <span className="text-[10px] font-mono text-slate-500">#{player.jerseyNumber}</span>
+                              )}
+                              {isMvp && (
+                                <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded font-black">
+                                  MVP DẪN ĐẦU
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-2.5 px-3 text-blue-700 text-xs font-medium">{player.teamName}</td>
+
+                          <td className="py-2.5 px-3 text-center font-mono font-black text-sm text-amber-700 bg-amber-50/50">
+                            {player.knockoutGoals}
+                          </td>
+
+                          <td className="py-2.5 px-2 text-center font-mono text-slate-700">{player.quarterGoals}</td>
+                          <td className="py-2.5 px-2 text-center font-mono text-amber-700 font-bold">{player.semiGoals}</td>
+                          <td className="py-2.5 px-2 text-center font-mono text-yellow-700 font-black">{player.finalGoals}</td>
+                          <td className="py-2.5 px-2 text-center font-mono text-blue-700">{player.knockoutAssists}</td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-700">{player.points}</td>
+
+                          {canEdit && (
+                            <td className="py-2.5 px-3 text-center">
+                              <button
+                                onClick={() => handleAutoAwardKnockoutMvp(player)}
+                                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold transition-all active:scale-95"
+                                title="Vinh danh cầu thủ này làm Cầu thủ xuất sắc nhất"
+                              >
+                                Vinh Danh
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
         </div>
-
-        {/* Knockout Goal Scorers Leaderboard Table */}
-        <div className="relative z-10 space-y-3 pt-2">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs sm:text-sm font-black uppercase text-slate-900 tracking-wider flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-amber-500" />
-              <span>Bảng Xếp Hạng Ghi Bàn Vòng Knock-out ({knockoutBestPlayers.length} Cầu thủ)</span>
-            </h4>
-            <span className="text-[10px] text-slate-500 font-medium">Tứ kết ➔ Bán kết ➔ Chung kết</span>
-          </div>
-
-          {knockoutBestPlayers.length === 0 ? (
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 text-center text-xs text-slate-600 space-y-1">
-              <p className="font-medium">Chưa có cầu thủ nào ghi bàn ở vòng Knock-out.</p>
-              <p className="text-[11px] text-slate-500">
-                Khi các trận đấu Tứ kết (15:00) và Bán kết (15:55) diễn ra và có bàn thắng, danh sách sẽ tự động xếp hạng tại đây.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xs">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 text-[11px]">
-                  <tr>
-                    <th className="py-2.5 px-3 text-center w-12">HẠNG</th>
-                    <th className="py-2.5 px-3">CẦU THỦ</th>
-                    <th className="py-2.5 px-3">ĐỘI BÓNG</th>
-                    <th className="py-2.5 px-3 text-center font-black text-amber-700" title="Bàn thắng vòng Knock-out">
-                      BÀN KNOCK-OUT
-                    </th>
-                    <th className="py-2.5 px-2 text-center text-slate-600" title="Bàn thắng Tứ kết">TỨ KẾT</th>
-                    <th className="py-2.5 px-2 text-center text-amber-700" title="Bàn thắng Bán kết">BÁN KẾT</th>
-                    <th className="py-2.5 px-2 text-center text-yellow-700" title="Bàn thắng Chung kết">CHUNG KẾT</th>
-                    <th className="py-2.5 px-2 text-center text-blue-700" title="Kiến tạo">KIẾN TẠO</th>
-                    <th className="py-2.5 px-3 text-center font-mono text-indigo-700" title="Điểm phong độ">ĐIỂM</th>
-                    {canEdit && <th className="py-2.5 px-3 text-center">THAO TÁC</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {knockoutBestPlayers.map((player) => {
-                    const isMvp = player.rank === 1 && player.knockoutGoals > 0;
-
-                    return (
-                      <tr
-                        key={player.playerId}
-                        className={`hover:bg-slate-50 transition-colors ${
-                          isMvp ? 'bg-amber-50/60 font-bold' : ''
-                        }`}
-                      >
-                        <td className="py-2.5 px-3 text-center">
-                          <span
-                            className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-black text-xs font-mono ${
-                              player.rank === 1
-                                ? 'bg-amber-400 text-slate-950'
-                                : player.rank === 2
-                                ? 'bg-slate-200 text-slate-800'
-                                : player.rank === 3
-                                ? 'bg-amber-200 text-amber-900'
-                                : 'text-slate-500'
-                            }`}
-                          >
-                            {player.rank}
-                          </span>
-                        </td>
-
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 text-xs">{player.playerName}</span>
-                            {player.jerseyNumber && (
-                              <span className="text-[10px] font-mono text-slate-500">#{player.jerseyNumber}</span>
-                            )}
-                            {isMvp && (
-                              <span className="text-[9px] bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.2 rounded font-black">
-                                MVP DẪN ĐẦU
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="py-2.5 px-3 text-blue-700 text-xs font-medium">{player.teamName}</td>
-
-                        <td className="py-2.5 px-3 text-center font-mono font-black text-sm text-amber-700 bg-amber-50/50">
-                          {player.knockoutGoals}
-                        </td>
-
-                        <td className="py-2.5 px-2 text-center font-mono text-slate-700">{player.quarterGoals}</td>
-                        <td className="py-2.5 px-2 text-center font-mono text-amber-700 font-bold">{player.semiGoals}</td>
-                        <td className="py-2.5 px-2 text-center font-mono text-yellow-700 font-black">{player.finalGoals}</td>
-                        <td className="py-2.5 px-2 text-center font-mono text-blue-700">{player.knockoutAssists}</td>
-                        <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-700">{player.points}</td>
-
-                        {canEdit && (
-                          <td className="py-2.5 px-3 text-center">
-                            <button
-                              onClick={() => handleAutoAwardKnockoutMvp(player)}
-                              className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold transition-all active:scale-95"
-                              title="Vinh danh cầu thủ này làm Cầu thủ xuất sắc nhất"
-                            >
-                              Vinh Danh
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
       )}
 
       {/* Individual Awards Section (Tùy Chọn Danh Hiệu Cá Nhân) */}
@@ -898,13 +896,13 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
                   <div>
                     {/* Photo Thumbnail Banner */}
                     <div className="relative h-32 overflow-hidden bg-slate-100">
-                      <img 
-                        src={awardImg} 
-                        alt={a.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                      <img
+                        src={awardImg}
+                        alt={a.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent" />
-                      
+
                       <div className="absolute top-2.5 left-2.5">
                         <span className="text-xl p-1.5 bg-white/95 rounded-xl border border-slate-200 inline-flex items-center justify-center shadow-xs">
                           {a.icon || '🏅'}
@@ -966,8 +964,8 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
                   {isCreatingNew
                     ? 'Thêm Danh Hiệu Cá Nhân Mới'
                     : isPodiumSelected
-                    ? `Cập Nhật Bục Vinh Quang: ${selectedAward?.title}`
-                    : `Tùy Chỉnh Danh Hiệu: ${selectedAward?.title}`}
+                      ? `Cập Nhật Bục Vinh Quang: ${selectedAward?.title}`
+                      : `Tùy Chỉnh Danh Hiệu: ${selectedAward?.title}`}
                 </span>
               </h3>
               <button
@@ -1007,11 +1005,10 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
                         key={emoji}
                         type="button"
                         onClick={() => setAwardIcon(emoji)}
-                        className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all ${
-                          awardIcon === emoji
+                        className={`w-9 h-9 rounded-xl text-lg flex items-center justify-center transition-all ${awardIcon === emoji
                             ? 'bg-blue-50 border-2 border-blue-500 text-blue-600 shadow-xs scale-105'
                             : 'bg-slate-100 border border-slate-200 hover:bg-slate-200'
-                        }`}
+                          }`}
                       >
                         {emoji}
                       </button>
@@ -1038,11 +1035,10 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
                       <div
                         key={img.url}
                         onClick={() => setAwardImage(img.url)}
-                        className={`cursor-pointer rounded-xl overflow-hidden border-2 transition-all relative group ${
-                          awardImage === img.url
+                        className={`cursor-pointer rounded-xl overflow-hidden border-2 transition-all relative group ${awardImage === img.url
                             ? 'border-blue-600 shadow-md scale-[1.02]'
                             : 'border-slate-200 opacity-70 hover:opacity-100'
-                        }`}
+                          }`}
                       >
                         <img src={img.url} alt={img.label} className="w-full h-16 object-cover" />
                         <span className="block text-[10px] font-bold text-center py-1 bg-slate-100 text-slate-700 truncate px-1">

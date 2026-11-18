@@ -1,17 +1,17 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Match, Team, Venue, Referee, UserRole, Tournament, MatchStatus, StudentScheduleConfig, TeamBusyConstraint } from '@/types';
+import { Match, Team, Venue, Referee, UserRole, Tournament, MatchStatus, StudentScheduleConfig, TeamBusyConstraint, formatMatchSetsCompact, getSportMeta } from '@/types';
 import { ScheduleEngine, DEFAULT_STUDENT_SCHEDULE_CONFIG } from '@/services/scheduleEngine';
 import { KnockoutEngine } from '@/services/knockoutEngine';
 import { StorageService } from '@/services/storage';
-import { 
-  Calendar, 
-  MapPin, 
-  Clock, 
-  Sparkles, 
-  CheckCircle2, 
-  Radio, 
+import {
+  Calendar,
+  MapPin,
+  Clock,
+  Sparkles,
+  CheckCircle2,
+  Radio,
   AlertCircle,
   Filter,
   RefreshCw,
@@ -59,7 +59,7 @@ const WEEKDAY_OPTIONS = [
 const STUDENT_SLOT_PRESETS = [
   { label: 'Sáng Cuối Tuần (07:00 & 08:20)', slots: ['07:00', '08:20'] },
   { label: 'Chiều Sau Giờ Học (15:30 & 16:50)', slots: ['15:30', '16:50'] },
-  { label: 'Tối Đèn Sân (17:30 & 18:50)', slots: ['17:30', '18:50'] },
+  { label: 'Tối Đèn Sân (18:00 & 19:00)', slots: ['18:00', '19:00'] },
 ];
 
 export const ScheduleView: React.FC<ScheduleViewProps> = ({
@@ -74,6 +74,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   onTournamentUpdate,
 }) => {
   const isSingleLeague = (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE';
+  const sportMeta = getSportMeta(tournament?.sportType);
 
   const [filterVenue, setFilterVenue] = useState<string>('ALL');
   const [filterRound, setFilterRound] = useState<string>('ALL');
@@ -209,9 +210,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       StorageService.logAction(
         currentRole,
         currentRole,
-        'TỰ ĐỘNG LẬP LỊCH THI ĐẤU (CHIA BẢNG + KNOCKOUT)',
+        'TỰ ĐỘNG LẬP LỊCH THI ĐẤU (CHIA BẢNG + VÒNG LOẠI)',
         `${allUpdated.length} Trận Đấu`,
-        `Tự động xếp ${allUpdated.length} trận vòng bảng và Knockout từ ${startDate}.`
+        `Tự động xếp ${allUpdated.length} trận vòng bảng và vòng loại từ ${startDate}.`
       );
 
       alert(`Đã tạo thành công lịch thi đấu ${allUpdated.length} trận!`);
@@ -495,12 +496,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   // Detect conflicts in real-time during manual match edit
   const conflictMatch = editingMatch
     ? matches.find(
-        (m) =>
-          m.id !== editingMatch.id &&
-          m.date === editDate &&
-          m.time === editTime &&
-          m.venueId === editVenueId
-      )
+      (m) =>
+        m.id !== editingMatch.id &&
+        m.date === editDate &&
+        m.time === editTime &&
+        m.venueId === editVenueId
+    )
     : null;
 
   const getVenueDetails = (venueId?: string, venueNameFallback?: string) => {
@@ -626,13 +627,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       <div
         key={m.id}
         onClick={() => onSelectMatch(m.id)}
-        className={`bg-white border ${
-          isSwapSource
-            ? 'border-amber-500 ring-2 ring-amber-400/40'
-            : swapSourceMatchId
+        className={`bg-white border ${isSwapSource
+          ? 'border-amber-500 ring-2 ring-amber-400/40'
+          : swapSourceMatchId
             ? 'border-blue-300 border-dashed hover:border-amber-500'
             : 'border-slate-200'
-        } ${pitchStyle.border} rounded-2xl p-4 shadow-xs transition-all cursor-pointer hover:shadow-md hover:border-blue-400 flex flex-col justify-between group text-slate-800`}
+          } ${pitchStyle.border} rounded-2xl p-4 shadow-xs transition-all cursor-pointer hover:shadow-md hover:border-blue-400 flex flex-col justify-between group text-slate-800`}
       >
         {/* Card Header: Match #, Round Label, Prominent PITCH BADGE & Match Status */}
         <div className="flex items-center justify-between text-[11px] pb-2.5 border-b border-slate-100 mb-3 gap-2 flex-wrap">
@@ -666,7 +666,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             {m.status === 'LIVE' && (
               <span className="flex items-center gap-1 font-bold text-red-700 animate-pulse text-[10px] bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg">
-                <Radio className="w-3 h-3 text-red-600" /> LIVE {m.currentMinute}&apos;
+                <Radio className="w-3 h-3 text-red-600" /> {sportMeta.isSetSport ? `LIVE SET ${m.currentSet || 1}` : `LIVE ${m.currentMinute}'`}
               </span>
             )}
             {m.status === 'FINISHED' && (
@@ -727,6 +727,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           </div>
         </div>
 
+        {/* Compact set scores if Badminton / Volleyball */}
+        {sportMeta.isSetSport && formatMatchSetsCompact(m) && (
+          <div className="my-2 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-[10px] font-mono text-emerald-800 text-center font-bold">
+            Chi tiết set: {formatMatchSetsCompact(m)}
+          </div>
+        )}
+
         {/* Penalty shootout if applicable */}
         {m.penaltyShootout && (
           <div className="my-2 p-1.5 bg-amber-50 border border-amber-200 rounded-lg text-[10px] text-amber-800 text-center font-bold">
@@ -749,11 +756,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               <span className="font-bold text-blue-700">{m.time}</span>
             </div>
             <span
-              className={`font-mono text-[10px] px-1.5 py-0.5 rounded border font-bold ${
-                m.durationMinutes
-                  ? 'bg-amber-50 border-amber-300 text-amber-800'
-                  : 'bg-slate-50 border-slate-200 text-slate-600'
-              }`}
+              className={`font-mono text-[10px] px-1.5 py-0.5 rounded border font-bold ${m.durationMinutes
+                ? 'bg-amber-50 border-amber-300 text-amber-800'
+                : 'bg-slate-50 border-slate-200 text-slate-600'
+                }`}
               title={
                 m.durationMinutes
                   ? 'Thời lượng tùy chỉnh riêng cho trận này'
@@ -767,24 +773,22 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               <div className="flex items-center gap-1">
                 <button
                   onClick={(e) => handleToggleLockMatch(e, m.id)}
-                  className={`p-1 rounded-lg border text-[10px] font-bold transition-all ${
-                    m.isLocked
-                      ? 'bg-indigo-100 border-indigo-300 text-indigo-800'
-                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-500'
-                  }`}
+                  className={`p-1 rounded-lg border text-[10px] font-bold transition-all ${m.isLocked
+                    ? 'bg-indigo-100 border-indigo-300 text-indigo-800'
+                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-500'
+                    }`}
                   title={m.isLocked ? 'Mở khóa trận đấu' : 'Khóa giờ/sân trận này để không bị xếp đè'}
                 >
                   {m.isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
                 </button>
                 <button
                   onClick={(e) => handleSwapMatchClick(e, m.id)}
-                  className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 ${
-                    isSwapSource
-                      ? 'bg-amber-500 border-amber-600 text-white'
-                      : swapSourceMatchId
+                  className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 transition-all active:scale-95 ${isSwapSource
+                    ? 'bg-amber-500 border-amber-600 text-white'
+                    : swapSourceMatchId
                       ? 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-800 animate-pulse'
                       : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                  }`}
+                    }`}
                   title={swapSourceMatchId ? 'Đổi ca/sân với trận đang chọn' : 'Hoán đổi ca/sân với trận khác'}
                 >
                   <ArrowLeftRight className="w-3 h-3" />
@@ -808,7 +812,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
   return (
     <div className="space-y-6">
-      
+
       {/* Top Banner Card */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 text-slate-800">
         <div>
@@ -828,8 +832,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             {isSingleLeague
               ? 'Lịch Thi Đấu & Tối Ưu Thời Khóa Biểu Sinh Viên'
               : canGenerate
-              ? 'Điều Hành Lịch Đấu 1 Ngày (06:30 – 17:35)'
-              : 'Lịch Thi Đấu & Kết Quả (06:30 – 17:35)'}
+                ? 'Điều Hành Lịch Đấu 1 Ngày (06:30 – 17:35)'
+                : 'Lịch Thi Đấu & Kết Quả (06:30 – 17:35)'}
           </h2>
           <p className="text-xs text-slate-600 mt-1">
             {isSingleLeague
@@ -844,13 +848,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             <button
               type="button"
               onClick={() => setShowConflictDetails(!showConflictDetails)}
-              className={`flex items-center gap-1.5 text-xs border px-3 py-1.5 rounded-xl font-bold transition-all ${
-                validationResult.valid && studentAnalysis.studentWarnings.length === 0
-                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                  : validationResult.valid
+              className={`flex items-center gap-1.5 text-xs border px-3 py-1.5 rounded-xl font-bold transition-all ${validationResult.valid && studentAnalysis.studentWarnings.length === 0
+                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                : validationResult.valid
                   ? 'text-amber-800 bg-amber-50 border-amber-200 hover:bg-amber-100'
                   : 'text-red-700 bg-red-50 border-red-200 hover:bg-red-100'
-              }`}
+                }`}
               title="Nhấn để xem chi tiết xung đột & trùng lịch sinh viên"
             >
               {validationResult.valid ? (
@@ -873,11 +876,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               <button
                 type="button"
                 onClick={() => setShowStudentPanel(!showStudentPanel)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border font-bold text-xs shadow-2xs transition-all active:scale-95 ${
-                  showStudentPanel
-                    ? 'bg-indigo-600 border-indigo-700 text-white'
-                    : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-800'
-                }`}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl border font-bold text-xs shadow-2xs transition-all active:scale-95 ${showStudentPanel
+                  ? 'bg-indigo-600 border-indigo-700 text-white'
+                  : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-800'
+                  }`}
               >
                 <Sliders className="w-3.5 h-3.5" />
                 <span>Thời Gian Cố Định &amp; Lịch SV</span>
@@ -1031,11 +1033,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                           : [...cur, wd.val];
                         updateScheduleConfig({ ...scheduleConfig, matchDaysOfWeek: next });
                       }}
-                      className={`px-2.5 py-1.5 rounded-xl font-bold border transition-all ${
-                        active
-                          ? 'bg-blue-600 border-blue-700 text-white shadow-2xs'
-                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                      }`}
+                      className={`px-2.5 py-1.5 rounded-xl font-bold border transition-all ${active
+                        ? 'bg-blue-600 border-blue-700 text-white shadow-2xs'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
                     >
                       {wd.label}
                     </button>
@@ -1105,11 +1106,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                         timeSlots: pr.slots,
                       })
                     }
-                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${
-                      JSON.stringify(scheduleConfig.timeSlots.slice(0, pr.slots.length)) === JSON.stringify(pr.slots)
-                        ? 'bg-emerald-600 border-emerald-700 text-white'
-                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${JSON.stringify(scheduleConfig.timeSlots.slice(0, pr.slots.length)) === JSON.stringify(pr.slots)
+                      ? 'bg-emerald-600 border-emerald-700 text-white'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
                   >
                     {pr.label}
                   </button>
@@ -1191,11 +1191,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     key={mins}
                     type="button"
                     onClick={() => setFixedDurationDraft(mins)}
-                    className={`px-2.5 py-1 rounded-lg font-bold border text-[11px] transition-all ${
-                      fixedDurationDraft === mins
-                        ? 'bg-indigo-600 border-indigo-700 text-white'
-                        : 'bg-white border-indigo-200 text-indigo-800 hover:bg-indigo-100'
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg font-bold border text-[11px] transition-all ${fixedDurationDraft === mins
+                      ? 'bg-indigo-600 border-indigo-700 text-white'
+                      : 'bg-white border-indigo-200 text-indigo-800 hover:bg-indigo-100'
+                      }`}
                   >
                     {mins}p (2×{Math.floor(mins / 2)}p)
                   </button>
@@ -1324,7 +1323,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           {/* Row 2: Excluded Dates (Exams/Holidays) + Per-Team Student Busy Constraints */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
             <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-2.5">
-              <span className="font-bold text-amber-900 block">4. Ngày nghỉ lễ / Tuần thi tránh xếp lịch:</span>
+              <span className="font-bold text-amber-900 block"> Ngày nghỉ lễ / Tuần thi tránh xếp lịch:</span>
               <div className="flex items-center gap-2">
                 <input
                   type="date"
@@ -1432,11 +1431,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                               const next = busy ? prev.filter((x) => x !== wd.val) : [...prev, wd.val];
                               updateTeamConstraint({ ...curConstraint, busyWeekdays: next });
                             }}
-                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
-                              busy
-                                ? 'bg-red-500 border-red-600 text-white'
-                                : 'bg-white border-slate-200 text-slate-600'
-                            }`}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${busy
+                              ? 'bg-red-500 border-red-600 text-white'
+                              : 'bg-white border-slate-200 text-slate-600'
+                              }`}
                           >
                             {wd.label}
                           </button>
@@ -1457,11 +1455,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                               const next = busy ? prev.filter((x) => x !== slot) : [...prev, slot];
                               updateTeamConstraint({ ...curConstraint, busyTimeSlots: next });
                             }}
-                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono border ${
-                              busy
-                                ? 'bg-red-500 border-red-600 text-white'
-                                : 'bg-white border-slate-200 text-slate-600'
-                            }`}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono border ${busy
+                              ? 'bg-red-500 border-red-600 text-white'
+                              : 'bg-white border-slate-200 text-slate-600'
+                              }`}
                           >
                             {slot} {busy ? '(Bận)' : ''}
                           </button>
@@ -1568,11 +1565,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               setFilterTimeSlot('ALL');
               setFilterDate('ALL');
             }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
-              filterRound === 'ALL' && filterRoundNum === 'ALL' && filterTimeSlot === 'ALL' && filterDate === 'ALL'
-                ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${filterRound === 'ALL' && filterRoundNum === 'ALL' && filterTimeSlot === 'ALL' && filterDate === 'ALL'
+              ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+              }`}
           >
             <Calendar className="w-3.5 h-3.5" />
             <span>Tất Cả ({matches.length} Trận)</span>
@@ -1583,11 +1579,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               <button
                 key={rn}
                 onClick={() => setFilterRoundNum(filterRoundNum === rn ? 'ALL' : rn)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all shrink-0 ${
-                  filterRoundNum === rn
-                    ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all shrink-0 ${filterRoundNum === rn
+                  ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                  }`}
               >
                 Vòng {rn}
               </button>
@@ -1599,11 +1594,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   setFilterRound('GROUP');
                   setFilterTimeSlot('ALL');
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
-                  filterRound === 'GROUP'
-                    ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${filterRound === 'GROUP'
+                  ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                  }`}
               >
                 <span>🌅 Vòng Bảng</span>
               </button>
@@ -1613,11 +1607,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   setFilterRound('QUARTER_FINAL');
                   setFilterTimeSlot('ALL');
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
-                  filterRound === 'QUARTER_FINAL'
-                    ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${filterRound === 'QUARTER_FINAL'
+                  ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                  }`}
               >
                 <span>⚡ Tứ Kết</span>
               </button>
@@ -1627,11 +1620,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   setFilterRound('SEMI_FINAL');
                   setFilterTimeSlot('ALL');
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
-                  filterRound === 'SEMI_FINAL'
-                    ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${filterRound === 'SEMI_FINAL'
+                  ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                  }`}
               >
                 <span>🔥 Bán Kết</span>
               </button>
@@ -1641,11 +1633,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   setFilterRound('FINAL');
                   setFilterTimeSlot('ALL');
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${
-                  filterRound === 'FINAL' || filterRound === 'THIRD_PLACE'
-                    ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${filterRound === 'FINAL' || filterRound === 'THIRD_PLACE'
+                  ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                  }`}
               >
                 <span>🏆 Chung Kết &amp; Tranh 3</span>
               </button>
@@ -1666,11 +1657,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               onClick={() => setViewLayout('GROUPED_BY_DATE')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                viewLayout === 'GROUPED_BY_DATE'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${viewLayout === 'GROUPED_BY_DATE'
+                ? 'bg-blue-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
               title="Nhóm các trận đấu theo từng ngày thi đấu"
             >
               <CalendarDays className="w-3.5 h-3.5" />
@@ -1678,11 +1668,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             </button>
             <button
               onClick={() => setViewLayout('GRID')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                viewLayout === 'GRID'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${viewLayout === 'GRID'
+                ? 'bg-blue-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
               title="Hiển thị toàn bộ dưới dạng lưới"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -1696,11 +1685,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 overflow-x-auto max-w-full">
             <button
               onClick={() => setFilterVenue('ALL')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 ${
-                filterVenue === 'ALL'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 ${filterVenue === 'ALL'
+                ? 'bg-blue-600 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Tất Cả Sân
             </button>
@@ -1711,11 +1699,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 <button
                   key={v.id}
                   onClick={() => setFilterVenue(v.id)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 shrink-0 ${
-                    isActive
-                      ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 shrink-0 ${isActive
+                    ? 'bg-blue-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   <MapPin className="w-2.5 h-2.5" />
                   <span>{short}</span>
@@ -2000,11 +1987,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                           <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-blue-50/90 via-sky-50/50 to-white border border-blue-200/80 shadow-2xs">
                             <div className="flex items-center gap-2.5">
                               <div
-                                className={`p-1.5 rounded-lg ${
-                                  isMorning
-                                    ? 'bg-amber-100 text-amber-700 border border-amber-300'
-                                    : 'bg-orange-100 text-orange-700 border border-orange-300'
-                                }`}
+                                className={`p-1.5 rounded-lg ${isMorning
+                                  ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                                  : 'bg-orange-100 text-orange-700 border border-orange-300'
+                                  }`}
                               >
                                 {isMorning ? <Sun className="w-4 h-4" /> : <Sunset className="w-4 h-4" />}
                               </div>
@@ -2240,11 +2226,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                       key={preset}
                       type="button"
                       onClick={() => setEditTime(preset)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono transition-all ${
-                        editTime === preset
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono transition-all ${editTime === preset
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
                     >
                       {preset}
                     </button>
@@ -2269,22 +2254,20 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setEditUseCustomDuration(false)}
-                      className={`px-2.5 py-1 rounded-lg font-bold border ${
-                        !editUseCustomDuration
-                          ? 'bg-blue-600 border-blue-700 text-white'
-                          : 'bg-white border-slate-200 text-slate-600'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg font-bold border ${!editUseCustomDuration
+                        ? 'bg-blue-600 border-blue-700 text-white'
+                        : 'bg-white border-slate-200 text-slate-600'
+                        }`}
                     >
                       Mặc định ({tournament?.matchDurationMinutes || (isSingleLeague ? 60 : 40)}p)
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditUseCustomDuration(true)}
-                      className={`px-2.5 py-1 rounded-lg font-bold border ${
-                        editUseCustomDuration
-                          ? 'bg-indigo-600 border-indigo-700 text-white'
-                          : 'bg-white border-slate-200 text-slate-600'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg font-bold border ${editUseCustomDuration
+                        ? 'bg-indigo-600 border-indigo-700 text-white'
+                        : 'bg-white border-slate-200 text-slate-600'
+                        }`}
                     >
                       Tùy chỉnh riêng trận này
                     </button>
@@ -2299,11 +2282,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                           key={mins}
                           type="button"
                           onClick={() => setEditDurationMinutes(mins)}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${
-                            editDurationMinutes === mins
-                              ? 'bg-indigo-600 border-indigo-700 text-white'
-                              : 'bg-white border-slate-200 text-slate-700'
-                          }`}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-bold border ${editDurationMinutes === mins
+                            ? 'bg-indigo-600 border-indigo-700 text-white'
+                            : 'bg-white border-slate-200 text-slate-700'
+                            }`}
                         >
                           {mins}p (2×{Math.floor(mins / 2)}p)
                         </button>

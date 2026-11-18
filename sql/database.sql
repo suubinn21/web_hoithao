@@ -1,6 +1,5 @@
 -- ============================================================================
 -- ITFTMS 2026 - CƠ SỞ DỮ LIỆU MYSQL / MARIADB CHO DIRECTADMIN HOSTING
--- Hỗ trợ đa bộ môn: Bóng đá, Bóng chuyền, Cầu lông
 -- Phiên bản tối ưu cho Shared Hosting (PHP + MySQL/MariaDB, utf8mb4)
 -- LƯU Ý: Không chứa sẵn bất kỳ tài khoản hay mật khẩu mặc định nào!
 --        Bạn sẽ tự tạo tài khoản & mật khẩu bằng SQL bên dưới hoặc qua phpMyAdmin.
@@ -37,6 +36,8 @@ CREATE TABLE IF NOT EXISTS `users` (
 -- ----------------------------------------------------------------------------
 -- 2. BẢNG GIẢI ĐẤU & DỮ LIỆU GIẢI ĐẤU (tournaments)
 -- Dùng LONGTEXT để tương thích 100% mọi phiên bản MySQL 5.7+ và MariaDB 10.x
+-- Lưu ý: schedule_config_json còn lưu cấu hình đa môn (sportType: FOOTBALL/BADMINTON/VOLLEYBALL, setConfig)
+--        và matches_json lưu tỷ số chi tiết từng set (sets) cho Cầu lông / Bóng chuyền.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `tournaments` (
   `id` VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -44,10 +45,6 @@ CREATE TABLE IF NOT EXISTS `tournaments` (
   `short_code` VARCHAR(64) NOT NULL DEFAULT 'ITFTMS',
   `year` INT NOT NULL DEFAULT 2026,
   `organizer` VARCHAR(255) NOT NULL DEFAULT '',
-  `sport_type` VARCHAR(32) NOT NULL DEFAULT 'FOOTBALL',
-  `event_category` VARCHAR(32) NOT NULL DEFAULT 'TEAM',
-  `event_group_name` VARCHAR(191) NOT NULL DEFAULT '',
-  `sport_config_json` LONGTEXT DEFAULT NULL,
   `format` VARCHAR(191) NOT NULL DEFAULT 'Bóng đá sân 5 – Vòng tròn một lượt (12 đội)',
   `format_type` VARCHAR(32) NOT NULL DEFAULT 'SINGLE_LEAGUE',
   `max_teams` INT NOT NULL DEFAULT 12,
@@ -83,7 +80,6 @@ CREATE TABLE IF NOT EXISTS `tournaments` (
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY `idx_tournaments_status` (`status`),
   KEY `idx_tournaments_year` (`year`),
-  KEY `idx_tournaments_sport` (`sport_type`),
   KEY `idx_tournaments_version` (`version`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

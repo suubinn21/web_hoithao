@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Tournament, UserRole, TournamentStatus, UserAccount } from '@/types';
+import { Tournament, UserRole, TournamentStatus, UserAccount, SportType, getSportMeta } from '@/types';
 import {
   Trophy,
   Calendar,
@@ -72,6 +72,7 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [yearFilter, setYearFilter] = useState<string>('ALL');
+  const [sportFilter, setSportFilter] = useState<'ALL' | SportType>('ALL');
 
   // Compute live statistics for each tournament
   const tournamentStatsMap = useMemo(() => {
@@ -102,8 +103,9 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
 
     const matchStatus = statusFilter === 'ALL' || t.status === statusFilter;
     const matchYear = yearFilter === 'ALL' || String(t.year) === yearFilter;
+    const matchSport = sportFilter === 'ALL' || (t.sportType || 'FOOTBALL') === sportFilter;
 
-    return matchSearch && matchStatus && matchYear;
+    return matchSearch && matchStatus && matchYear && matchSport;
   });
 
   const statusConfigs: Record<TournamentStatus, { label: string; badgeClass: string; dotClass: string }> = {
@@ -189,12 +191,12 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-black tracking-widest text-sky-700 uppercase bg-sky-50 px-2 py-0.5 rounded border border-sky-200 font-mono">
-                  IT FOOTBALL
+                  IT SPORTS
                 </span>
                 <span className="text-[11px] text-slate-500 hidden sm:inline font-medium">• Khoa CNTT</span>
               </div>
               <h1 className="text-sm sm:text-base md:text-lg font-black tracking-tight text-slate-900 line-clamp-1">
-                <span className="hidden sm:inline">CỔNG THÔNG TIN CÁC GIẢI ĐẤU BÓNG ĐÁ</span>
+                <span className="hidden sm:inline">CỔNG THÔNG TIN CÁC GIẢI THỂ THAO</span>
                 <span className="sm:hidden">CỔNG CÁC GIẢI ĐẤU</span>
               </h1>
             </div>
@@ -315,15 +317,15 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
               </div>
 
               <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
-                CÁC MÙA GIẢI BÓNG ĐÁ <br className="hidden sm:block" />
+                CÁC MÙA GIẢI THỂ THAO <br className="hidden sm:block" />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-200 via-white to-cyan-200">
                   KHOA CÔNG NGHỆ THÔNG TIN
                 </span>
               </h2>
 
               <p className="text-sm sm:text-base text-blue-100 font-normal leading-relaxed">
-                Hệ thống điều hành trọn vẹn từ khâu tiếp nhận đăng ký, bốc thăm chia bảng, lập lịch thi đấu,
-                Live Match Center cập nhật từng phút, xếp hạng Ranking Engine tự động và sơ đồ nhánh đấu Knock-out.
+                Hệ thống quản lý điều hành đa môn (⚽ Bóng đá, 🏸 Cầu lông, 🏐 Bóng chuyền) từ khâu đăng ký, bốc thăm,
+                lập lịch thi đấu, chấm điểm trực tiếp đến xếp hạng tự động và nhánh Knock-out.
               </p>
             </div>
 
@@ -369,89 +371,116 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
         </div>
 
         {/* Search, Filter & Year Selection Toolbar - Solid White */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5 bg-white border border-slate-200 p-3.5 sm:p-4 rounded-2xl shadow-xs">
+        <div className="bg-white border border-slate-200 p-3.5 sm:p-4 rounded-2xl shadow-xs space-y-3">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5">
 
-          {/* Search Box */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 pointer-events-none" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm kiếm giải đấu theo tên, năm, mã hiệu hoặc đơn vị tổ chức..."
-              className="w-full pl-10 pr-12 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-            />
-            {searchTerm && (
+            {/* Search Box */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500 pointer-events-none" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Tìm kiếm giải đấu theo tên, năm, mã hiệu hoặc đơn vị tổ chức..."
+                className="w-full pl-10 pr-12 min-h-[44px] py-2.5 bg-slate-50 border border-slate-200 focus:border-blue-500 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 min-h-[36px] px-2.5 py-1 text-xs text-slate-600 hover:text-slate-900 bg-slate-200 hover:bg-slate-300 rounded-lg active:scale-95 transition-all"
+                  aria-label="Xóa từ khóa tìm kiếm"
+                >
+                  Xóa
+                </button>
+              )}
+            </div>
+
+            {/* Status Filters */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
               <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 min-h-[36px] px-2.5 py-1 text-xs text-slate-600 hover:text-slate-900 bg-slate-200 hover:bg-slate-300 rounded-lg active:scale-95 transition-all"
-                aria-label="Xóa từ khóa tìm kiếm"
+                onClick={() => setStatusFilter('ALL')}
+                className={`shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all active:scale-95 ${statusFilter === 'ALL'
+                  ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-md shadow-blue-500/20 border border-blue-500/30'
+                  : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-700 hover:bg-slate-200'
+                  }`}
               >
-                Xóa
+                Tất Cả ({tournaments.length})
               </button>
-            )}
+
+              <button
+                onClick={() => setStatusFilter('REGISTRATION')}
+                className={`shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all active:scale-95 ${statusFilter === 'REGISTRATION'
+                  ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-md shadow-blue-500/20 border border-blue-500/30'
+                  : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-700 hover:bg-slate-200'
+                  }`}
+              >
+                Đang Mở Đăng Ký
+              </button>
+
+              <button
+                onClick={() => setStatusFilter('GROUP_STAGE')}
+                className={`shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all active:scale-95 ${statusFilter === 'GROUP_STAGE'
+                  ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-md shadow-blue-500/20 border border-blue-500/30'
+                  : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-700 hover:bg-slate-200'
+                  }`}
+              >
+                Vòng Bảng
+              </button>
+
+              <button
+                onClick={() => setStatusFilter('COMPLETED')}
+                className={`shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all active:scale-95 ${statusFilter === 'COMPLETED'
+                  ? 'bg-slate-700 text-white border border-slate-600'
+                  : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-700 hover:bg-slate-200'
+                  }`}
+              >
+                Đã Bế Mạc
+              </button>
+
+              {/* Year Dropdown Filter */}
+              {availableYears.length > 1 && (
+                <div className="shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 bg-slate-100 border border-slate-200 rounded-xl">
+                  <Filter className="w-3.5 h-3.5 text-blue-600" />
+                  <select
+                    value={yearFilter}
+                    onChange={(e) => setYearFilter(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                  >
+                    <option value="ALL" className="text-slate-800">Tất Cả Năm</option>
+                    {availableYears.map((yr) => (
+                      <option key={yr} value={yr} className="text-slate-800">
+                        Năm {yr}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Status Filters */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
-            <button
-              onClick={() => setStatusFilter('ALL')}
-              className={`shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all active:scale-95 ${statusFilter === 'ALL'
-                ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-md shadow-blue-500/20 border border-blue-500/30'
-                : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-700 hover:bg-slate-200'
+          {/* Sport Filter Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-slate-100 no-scrollbar">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1">Môn thi đấu:</span>
+            {(
+              [
+                { key: 'ALL', label: 'Tất Cả Môn' },
+                { key: 'FOOTBALL', label: '⚽ Bóng Đá' },
+                { key: 'BADMINTON', label: '🏸 Cầu Lông' },
+                { key: 'VOLLEYBALL', label: '🏐 Bóng Chuyền' },
+              ] as const
+            ).map((sp) => (
+              <button
+                key={sp.key}
+                onClick={() => setSportFilter(sp.key)}
+                className={`shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all active:scale-95 ${
+                  sportFilter === sp.key
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200'
                 }`}
-            >
-              Tất Cả ({tournaments.length})
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('REGISTRATION')}
-              className={`shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all active:scale-95 ${statusFilter === 'REGISTRATION'
-                ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-md shadow-blue-500/20 border border-blue-500/30'
-                : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-700 hover:bg-slate-200'
-                }`}
-            >
-              Đang Mở Đăng Ký
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('GROUP_STAGE')}
-              className={`shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all active:scale-95 ${statusFilter === 'GROUP_STAGE'
-                ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-md shadow-blue-500/20 border border-blue-500/30'
-                : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-700 hover:bg-slate-200'
-                }`}
-            >
-              Vòng Bảng
-            </button>
-
-            <button
-              onClick={() => setStatusFilter('COMPLETED')}
-              className={`shrink-0 min-h-[44px] px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all active:scale-95 ${statusFilter === 'COMPLETED'
-                ? 'bg-slate-700 text-white border border-slate-600'
-                : 'bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-700 hover:bg-slate-200'
-                }`}
-            >
-              Đã Bế Mạc
-            </button>
-
-            {/* Year Dropdown Filter */}
-            {availableYears.length > 1 && (
-              <div className="shrink-0 flex items-center gap-1.5 min-h-[44px] px-3 bg-slate-100 border border-slate-200 rounded-xl">
-                <Filter className="w-3.5 h-3.5 text-blue-600" />
-                <select
-                  value={yearFilter}
-                  onChange={(e) => setYearFilter(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
-                >
-                  <option value="ALL" className="text-slate-800">Tất Cả Năm</option>
-                  {availableYears.map((yr) => (
-                    <option key={yr} value={yr} className="text-slate-800">
-                      Năm {yr}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+              >
+                {sp.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -481,6 +510,7 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
                   setSearchTerm('');
                   setStatusFilter('ALL');
                   setYearFilter('ALL');
+                  setSportFilter('ALL');
                 }}
                 className="min-h-[44px] px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs sm:text-sm font-bold text-slate-700 transition-colors active:scale-95 border border-slate-200"
               >
@@ -492,6 +522,7 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
               {filteredTournaments.map((tour, tourIdx) => {
                 const stats = tournamentStatsMap[tour.id] || { teamsCount: 0, matchesCount: 0 };
                 const statusInfo = statusConfigs[tour.status || 'REGISTRATION'] || statusConfigs.REGISTRATION;
+                const sMeta = getSportMeta(tour.sportType);
                 const teamFillPercent = Math.min(100, Math.round((stats.teamsCount / (tour.maxTeams || 16)) * 100));
                 const tourCovers = ['/images/futsal-action.jpg', '/images/trophy-celebration.jpg', '/images/trophy-cup.jpg', '/images/tournament-hero.jpg'];
                 const coverImg = tourCovers[tourIdx % tourCovers.length];
@@ -516,10 +547,13 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/30 to-transparent" />
 
-                      {/* Floating Short Code & Year Badges */}
-                      <div className="absolute top-3.5 left-3.5 flex items-center gap-1.5 z-10">
+                      {/* Floating Short Code & Sport Badges */}
+                      <div className="absolute top-3.5 left-3.5 flex items-center gap-1.5 z-10 flex-wrap">
                         <span className="font-mono text-[10px] font-black tracking-widest text-blue-700 bg-white/95 px-2.5 py-1 rounded-lg border border-blue-200 shadow-xs">
                           {tour.shortCode || 'ITFTMS'}
+                        </span>
+                        <span className="text-[10px] font-black text-emerald-800 bg-emerald-50/95 px-2 py-1 rounded-lg border border-emerald-200 shadow-xs">
+                          {sMeta.icon} {sMeta.label}
                         </span>
                         <span className="text-[10px] font-bold text-slate-800 bg-white/95 px-2 py-1 rounded-lg border border-slate-200 shadow-xs">
                           {tour.year || 2026}
@@ -555,7 +589,7 @@ export const TournamentPortal: React.FC<TournamentPortalProps> = ({
                         {/* Format & Group Layout Pills */}
                         <div className="flex flex-wrap items-center gap-1.5">
                           <div className="bg-slate-100 border border-slate-200 text-[11px] text-slate-700 px-2.5 py-1 rounded-lg font-medium">
-                            ⚽ {tour.format || 'Bóng đá 5 người (Futsal)'} • {tour.matchDurationMinutes || 40}p
+                            {sMeta.icon} {tour.format || sMeta.fullLabel} • {tour.matchDurationMinutes || 40}p
                           </div>
                           <div className="bg-blue-50 border border-blue-200 text-[11px] text-blue-700 px-2.5 py-1 rounded-lg font-bold">
                             {tour.numberOfGroups || 4} Bảng × {tour.teamsPerGroup || 4} Đội

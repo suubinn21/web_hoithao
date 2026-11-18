@@ -15,6 +15,7 @@ import {
   Tournament,
   UserAccount,
   PaidFineRecord,
+  getSportMeta,
 } from '@/types';
 import { StorageService, defaultCleanAwards } from '@/services/storage';
 import { ScheduleEngine, migrateMatchTimesTo7AM } from '@/services/scheduleEngine';
@@ -819,6 +820,7 @@ export default function Home() {
   const liveMatches = matches.filter((m) => m.status === 'LIVE');
   const activeComplaints = complaints.filter((c) => c.status === 'PENDING' || c.status === 'UNDER_REVIEW');
   const suspendedPlayers = teams.flatMap((t) => t.players).filter((p) => p.isSuspended);
+  const sportMeta = getSportMeta(tournament?.sportType);
 
   return (
     <div className="min-h-screen flex flex-col bg-transparent text-slate-900">
@@ -1087,21 +1089,21 @@ export default function Home() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-slate-500">
-            <span>Bóng đá sân 5</span>
+            <span>{sportMeta.icon} {sportMeta.fullLabel}</span>
             <span>•</span>
-            <span>{teams.length || tournament?.maxTeams || 12} Đội bóng • {teams.reduce((s, t) => s + (t.players?.length || 0), 0)} Cầu thủ</span>
+            <span>{teams.length || tournament?.maxTeams || 12} {sportMeta.unitShortLabel} • {teams.reduce((s, t) => s + (t.players?.length || 0), 0)} {sportMeta.playerLabel}</span>
             <span>•</span>
             <span>{matches.length || ((tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE' ? 66 : 32)} Trận đấu</span>
             <span>•</span>
             <span>
               {(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
-                ? 'Vòng tròn 1 lượt • 2×30 Phút'
+                ? 'Vòng tròn 1 lượt'
                 : 'Chia bảng & Knockout'}
             </span>
           </div>
 
           <div className="text-slate-500 text-center md:text-right">
-            <div>Hệ Thống Quản Lý &amp; Điều Hành Giải Bóng Đá CNTT 2026</div>
+            <div>Hệ Thống Quản Lý &amp; Điều Hành Giải Thể Thao CNTT 2026</div>
             <div className="text-[11px] font-semibold text-slate-700 mt-0.5">Phạm Su Bin — Lớp Kỹ Thuật Phần Mềm 23</div>
           </div>
         </div>

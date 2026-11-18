@@ -1,18 +1,18 @@
 'use client';
 
 import React from 'react';
-import { Match, Team, FinancialTransaction, Complaint, UserRole, Tournament } from '@/types';
+import { Match, Team, FinancialTransaction, Complaint, UserRole, Tournament, getSportMeta, formatMatchSetsCompact, getEffectiveSetConfig } from '@/types';
 import { TabKey } from '../layout/Navigation';
-import { 
-  Trophy, 
-  Radio, 
-  Calendar, 
-  Users, 
-  Flame, 
-  Sparkles, 
-  ShieldAlert, 
-  Clock, 
-  BadgeDollarSign, 
+import {
+  Trophy,
+  Radio,
+  Calendar,
+  Users,
+  Flame,
+  Sparkles,
+  ShieldAlert,
+  Clock,
+  BadgeDollarSign,
   ArrowRight,
   TrendingUp,
   Shirt,
@@ -42,9 +42,19 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   currentRole,
   tournament,
 }) => {
+  const sportType = tournament?.sportType || 'FOOTBALL';
+  const sportMeta = getSportMeta(sportType);
+  const isSetSport = sportMeta.isSetSport;
+  const setConfig = getEffectiveSetConfig(tournament);
+
   const liveMatches = matches.filter((m) => m.status === 'LIVE');
   const finishedMatches = matches.filter((m) => m.status === 'FINISHED');
   const scheduledMatches = matches.filter((m) => m.status === 'SCHEDULED');
+
+  const totalMatchPoints = matches.reduce((sum, m) => {
+    if (!Array.isArray(m.sets)) return sum;
+    return sum + m.sets.reduce((sSum, s) => sSum + (Number(s.homePoints) || 0) + (Number(s.awayPoints) || 0), 0);
+  }, 0);
 
   // Trận Cầu Nổi Bật & Đang Diễn Ra: Ưu tiên trận LIVE và trận sắp đá (SCHEDULED)
   const featuredMatches = [
@@ -88,11 +98,11 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
   return (
     <div className="space-y-8">
-      
+
       {/* Hero Stadium Banner in Clean Ocean Blue */}
       <div className="relative rounded-3xl overflow-hidden border border-blue-500/30 bg-gradient-to-br from-blue-700 via-sky-600 to-blue-800 text-white p-6 sm:p-12 shadow-xl">
         {/* Action Photo Background */}
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20 transform scale-105 pointer-events-none"
           style={{ backgroundImage: `url('/images/futsal-action.jpg')` }}
         />
@@ -123,8 +133,8 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           </h1>
 
           <p className="text-sm sm:text-base text-blue-100 leading-relaxed mb-6 font-normal">
-            Chào mừng đến với cổng thông tin điện tử chính thức của <strong className="text-white font-bold">{tournament?.name || 'Giải bóng đá Khoa Công nghệ Thông tin 2026'}</strong>.
-            Nơi hội tụ <strong className="text-sky-200 font-bold">{teams.length > 0 ? `${teams.length} đội bóng` : `${tournament?.maxTeams || 12} đội bóng`}</strong> xuất sắc, <strong className="text-cyan-200 font-bold">{allPlayers.length > 0 ? `${allPlayers.length} cầu thủ sinh viên` : 'các cầu thủ sinh viên'}</strong> tranh tài qua <strong className="text-amber-300 font-bold">{matches.length > 0 ? `${matches.length} trận cầu` : 'các trận cầu'}</strong> trên {tournament?.numberOfVenues || 3} sân cỏ nhân tạo.
+            Chào mừng đến với cổng thông tin điện tử chính thức của <strong className="text-white font-bold">{tournament?.name || `Giải ${sportMeta.label} Khoa Công nghệ Thông tin 2026`}</strong>.
+            Nơi hội tụ <strong className="text-sky-200 font-bold">{teams.length > 0 ? `${teams.length} ${sportMeta.unitShortLabel.toLowerCase()}` : `${tournament?.maxTeams || 12} ${sportMeta.unitShortLabel.toLowerCase()}`}</strong> xuất sắc, <strong className="text-cyan-200 font-bold">{allPlayers.length > 0 ? `${allPlayers.length} ${sportMeta.playerLabel.toLowerCase()} sinh viên` : `các ${sportMeta.playerLabel.toLowerCase()} sinh viên`}</strong> tranh tài qua <strong className="text-amber-300 font-bold">{matches.length > 0 ? `${matches.length} trận đấu` : 'các trận đấu'}</strong> trên {tournament?.numberOfVenues || 3} {sportMeta.venueLabel.toLowerCase()}.
           </p>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -182,15 +192,15 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-slate-900">
-          
+
           <div className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-blue-300 flex flex-col justify-between shadow-xs transition-all hover:-translate-y-0.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500">Số Đội Bóng</span>
-            <span className="text-2xl font-black font-mono text-slate-900 mt-1">{teams.length} ĐỘI</span>
-            <span className="text-[10px] text-blue-600 font-bold">{tournament?.numberOfGroups || 4} Bảng Đấu</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500">Số {sportMeta.unitShortLabel}</span>
+            <span className="text-2xl font-black font-mono text-slate-900 mt-1">{teams.length} {sportMeta.unitShortLabel.toUpperCase()}</span>
+            <span className="text-[10px] text-blue-600 font-bold">{tournament?.numberOfGroups || 1} Bảng Đấu</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-blue-300 flex flex-col justify-between shadow-xs transition-all hover:-translate-y-0.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500">Tổng Cầu Thủ</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500">Tổng {sportMeta.playerLabel}</span>
             <span className="text-2xl font-black font-mono text-cyan-600 mt-1">
               {teams.reduce((sum, t) => sum + t.players.length, 0)}
             </span>
@@ -206,18 +216,29 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           </div>
 
           <div className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-blue-300 flex flex-col justify-between shadow-xs transition-all hover:-translate-y-0.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500">Bàn Thắng</span>
-            <span className="text-2xl font-black font-mono text-blue-600 mt-1">{totalGoals} ⚽</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500">{isSetSport ? 'Tổng Set Đấu' : 'Bàn Thắng'}</span>
+            <span className="text-2xl font-black font-mono text-blue-600 mt-1">
+              {totalGoals} {sportMeta.icon}
+            </span>
             <span className="text-[10px] text-slate-500">{finishedMatches.length} trận hoàn tất</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-blue-300 flex flex-col justify-between shadow-xs transition-all hover:-translate-y-0.5">
-            <span className="text-[10px] uppercase font-bold text-slate-500">Thẻ Phạt</span>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-lg font-black font-mono text-amber-600">{totalYellowCards}🟨</span>
-              <span className="text-lg font-black font-mono text-red-600">{totalRedCards}🟥</span>
-            </div>
-            <span className="text-[10px] text-slate-500">Tích lũy 2 thẻ = Treo</span>
+            <span className="text-[10px] uppercase font-bold text-slate-500">{isSetSport ? 'Tổng Điểm Set' : 'Thẻ Phạt'}</span>
+            {isSetSport ? (
+              <>
+                <span className="text-2xl font-black font-mono text-emerald-600 mt-1">{totalMatchPoints}</span>
+                <span className="text-[10px] text-slate-500">BO{setConfig.bestOf} • {setConfig.pointsPerSet}đ/set</span>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-lg font-black font-mono text-amber-600">{totalYellowCards}🟨</span>
+                  <span className="text-lg font-black font-mono text-red-600">{totalRedCards}🟥</span>
+                </div>
+                <span className="text-[10px] text-slate-500">Tích lũy 2 thẻ = Treo</span>
+              </>
+            )}
           </div>
 
           {(currentRole === 'SUPER_ADMIN' || currentRole === 'ORGANIZER') ? (
@@ -226,13 +247,15 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
               <span className="text-base font-black font-mono text-blue-600 mt-1">
                 {(totalIncome - totalExpense).toLocaleString()} đ
               </span>
-              <span className="text-[10px] text-slate-500">Thu {(totalIncome/1000000).toFixed(1)}M / Chi {(totalExpense/1000000).toFixed(1)}M</span>
+              <span className="text-[10px] text-slate-500">Thu {(totalIncome / 1000000).toFixed(1)}M / Chi {(totalExpense / 1000000).toFixed(1)}M</span>
             </div>
           ) : (
             <div className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-blue-300 flex flex-col justify-between shadow-xs transition-all hover:-translate-y-0.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500">Hiệu Suất Ghi Bàn</span>
+              <span className="text-[10px] uppercase font-bold text-slate-500">{isSetSport ? 'Tiến Độ Thi Đấu' : 'Hiệu Suất Ghi Bàn'}</span>
               <span className="text-xl font-black font-mono text-blue-600 mt-1">
-                {finishedMatches.length > 0 ? (totalGoals / finishedMatches.length).toFixed(1) : '0.0'} ⚽/trận
+                {isSetSport
+                  ? `${finishedMatches.length}/${matches.length} trận`
+                  : `${finishedMatches.length > 0 ? (totalGoals / finishedMatches.length).toFixed(1) : '0.0'} ⚽/trận`}
               </span>
               <span className="text-[10px] text-slate-500">{finishedMatches.length}/{matches.length} trận đã diễn ra</span>
             </div>
@@ -243,7 +266,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
       {/* Two Columns: Live / Featured Matches & Golden Boot Race */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* Left Column: Live / Featured Matches (7 Cols) */}
         <div className="lg:col-span-7 space-y-4">
           <div className="flex items-center justify-between">
@@ -310,7 +333,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       {m.status === 'LIVE' ? (
                         <span className="bg-red-50 text-red-600 border border-red-200 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse text-[10px]">
                           <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
-                          LIVE {m.currentMinute}&apos;
+                          {isSetSport ? `LIVE SET ${m.currentSet || 1}` : `LIVE ${m.currentMinute}'`}
                         </span>
                       ) : (
                         <span className="text-slate-600 font-mono text-[10px] bg-slate-50 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
@@ -329,9 +352,16 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       </div>
 
                       <div className="col-span-1 text-center font-mono font-black text-lg sm:text-xl text-blue-600">
-                        {m.status === 'LIVE'
-                          ? `${m.homeScore} - ${m.awayScore}`
-                          : 'VS'}
+                        <div>
+                          {m.status === 'LIVE'
+                            ? `${m.homeScore} - ${m.awayScore}`
+                            : 'VS'}
+                        </div>
+                        {isSetSport && formatMatchSetsCompact(m) && (
+                          <div className="text-[10px] font-semibold text-emerald-700 whitespace-nowrap">
+                            ({formatMatchSetsCompact(m)})
+                          </div>
+                        )}
                       </div>
 
                       <div className="col-span-3 text-left">
@@ -359,117 +389,151 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           </div>
         </div>
 
-        {/* Right Column: Golden Boot Top Scorers (5 Cols) - Solid White Card */}
+        {/* Right Column: Golden Boot (Football) or Sport Rules Overview (Badminton/Volleyball) */}
         <div className="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-5 shadow-xs flex flex-col justify-between overflow-hidden text-slate-900">
           <div>
-            {/* Golden Boot Award Banner Photo */}
-            <div className="relative h-28 -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-3xl">
-              <img 
-                src="/images/golden-boot.jpg" 
-                alt="Golden Boot Award" 
-                className="w-full h-full object-cover" 
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
-              <div className="absolute bottom-2.5 left-4 right-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Trophy className="w-4 h-4 text-amber-400 drop-shadow" />
-                  <h3 className="text-sm font-black uppercase tracking-wider text-white drop-shadow">
-                    Đua Vua Phá Lưới (Golden Boot)
-                  </h3>
+            {isSetSport ? (
+              <div className="mb-4 p-4 rounded-2xl bg-gradient-to-br from-blue-700 via-sky-600 to-cyan-600 text-white shadow-sm">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="text-lg">{sportMeta.icon}</span>
+                    <span>Quy Chế {sportMeta.label}</span>
+                  </span>
+                  <span className="text-[11px] font-mono font-bold bg-white/20 px-2 py-0.5 rounded-lg">
+                    BO{setConfig.bestOf}
+                  </span>
                 </div>
-                <span className="text-xs font-mono font-bold text-amber-300 bg-black/60 px-2 py-0.5 rounded border border-amber-500/40">
-                  Điều 25
-                </span>
+                <p className="text-xs text-blue-100 leading-relaxed">
+                  {sportType === 'VOLLEYBALL'
+                    ? `Mỗi trận đấu tối đa ${setConfig.bestOf} set (${setConfig.pointsPerSet} điểm, set quyết định ${setConfig.decidingSetPoints} điểm). Xếp hạng theo điểm trận chuẩn FIVB.`
+                    : `Mỗi trận đấu tối đa ${setConfig.bestOf} ván (${setConfig.pointsPerSet} điểm, tối đa 30 điểm). Xếp hạng theo chuẩn BWF (thắng 3đ, thua 0đ).`}
+                </p>
               </div>
-            </div>
-
-            <div className="space-y-2.5">
-              {topScorers.length === 0 ? (
-                <div className="text-xs text-slate-500 text-center py-6">Chưa có cầu thủ ghi bàn</div>
-              ) : (
-                topScorers.map((p, idx) => {
-                  const team = getTeam(p.teamId);
-                  return (
-                    <div
-                      key={p.id}
-                      className="p-3 min-h-[44px] rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between hover:border-blue-300 transition-all"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center font-mono font-bold text-xs ${
-                            idx === 0
-                              ? 'bg-amber-500 text-white font-black shadow-xs'
-                              : idx === 1
-                              ? 'bg-slate-300 text-slate-800 font-black'
-                              : idx === 2
-                              ? 'bg-amber-700 text-white font-black'
-                              : 'bg-slate-200 text-slate-600'
-                          }`}
-                        >
-                          {idx + 1}
-                        </span>
-
-                        <div>
-                          <h4 className="text-xs font-bold text-slate-900">{p.name}</h4>
-                          <span className="text-[10px] text-slate-500">
-                            #{p.jerseyNumber} • {team?.shortName} • Lớp {p.class}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="text-base font-black font-mono text-blue-600 block">
-                          {p.goals} ⚽
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          {p.assists || 0} kiến tạo
-                        </span>
-                      </div>
+            ) : (
+              <>
+                {/* Golden Boot Award Banner Photo */}
+                <div className="relative h-28 -mx-5 -mt-5 mb-4 overflow-hidden rounded-t-3xl">
+                  <img
+                    src="/images/golden-boot.jpg"
+                    alt="Golden Boot Award"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
+                  <div className="absolute bottom-2.5 left-4 right-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-amber-400 drop-shadow" />
+                      <h3 className="text-sm font-black uppercase tracking-wider text-white drop-shadow">
+                        Đua Vua Phá Lưới (Golden Boot)
+                      </h3>
                     </div>
-                  );
-                })
-              )}
-            </div>
+                    <span className="text-xs font-mono font-bold text-amber-300 bg-black/60 px-2 py-0.5 rounded border border-amber-500/40">
+                      Điều 25
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  {topScorers.length === 0 ? (
+                    <div className="text-xs text-slate-500 text-center py-6">Chưa có cầu thủ ghi bàn</div>
+                  ) : (
+                    topScorers.map((p, idx) => {
+                      const team = getTeam(p.teamId);
+                      return (
+                        <div
+                          key={p.id}
+                          className="p-3 min-h-[44px] rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between hover:border-blue-300 transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`w-6 h-6 rounded-full flex items-center justify-center font-mono font-bold text-xs ${idx === 0
+                                  ? 'bg-amber-500 text-white font-black shadow-xs'
+                                  : idx === 1
+                                    ? 'bg-slate-300 text-slate-800 font-black'
+                                    : idx === 2
+                                      ? 'bg-amber-700 text-white font-black'
+                                      : 'bg-slate-200 text-slate-600'
+                                }`}
+                            >
+                              {idx + 1}
+                            </span>
+
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-900">{p.name}</h4>
+                              <span className="text-[10px] text-slate-500">
+                                #{p.jerseyNumber} • {team?.shortName} • Lớp {p.class}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-base font-black font-mono text-blue-600 block">
+                              {p.goals} ⚽
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              {p.assists || 0} kiến tạo
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Tournament Regulations Summary */}
           <div className="mt-5 pt-4 border-t border-slate-100 text-xs text-slate-600 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <span>Thể thức:</span>
-              <strong className="text-slate-900">
-                {(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
-                  ? `Sân 5 • Vòng tròn 1 lượt (${tournament?.maxTeams || 12} đội)`
-                  : 'Bóng đá 5 người (Chia bảng + Knockout)'}
+              <strong className="text-slate-900 text-right">
+                {tournament?.format || `${sportMeta.label} • ${(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE' ? `Vòng tròn (${tournament?.maxTeams || 12} ${sportMeta.unitShortLabel.toLowerCase()})` : 'Chia bảng + Knockout'}`}
               </strong>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <span>Thời lượng:</span>
-              <strong className="text-slate-900">
-                {tournament?.matchDurationMinutes || 60}p ({Math.floor((tournament?.matchDurationMinutes || 60) / 2)}p × 2, nghỉ {tournament?.breakDurationMinutes || 5}p)
+              <span>{isSetSport ? 'Thể lệ Set:' : 'Thời lượng:'}</span>
+              <strong className="text-slate-900 text-right">
+                {isSetSport
+                  ? `BO${setConfig.bestOf} • ${setConfig.pointsPerSet}đ (Set cuối ${setConfig.decidingSetPoints}đ)`
+                  : `${tournament?.matchDurationMinutes || 60}p (${Math.floor((tournament?.matchDurationMinutes || 60) / 2)}p × 2, nghỉ ${tournament?.breakDurationMinutes || 5}p)`}
               </strong>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span>Tính điểm:</span>
-              <strong className="text-blue-700">Thắng 03đ • Hòa 01đ • Thua 00đ</strong>
+              <strong className="text-blue-700 text-right">
+                {sportType === 'VOLLEYBALL'
+                  ? 'Thắng 3đ/2đ • Thua 1đ/0đ (Chuẩn FIVB)'
+                  : sportType === 'BADMINTON'
+                    ? 'Thắng 3đ • Thua 0đ (Không hòa)'
+                    : 'Thắng 3đ • Hòa 1đ • Thua 0đ'}
+              </strong>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span>Bằng điểm:</span>
-              <strong className="text-slate-900 text-right">Đối đầu ➔ Hiệu số ➔ BT ➔ Thẻ ➔ Bốc thăm</strong>
+              <strong className="text-slate-900 text-right">
+                {sportType === 'VOLLEYBALL'
+                  ? 'Trận thắng ➔ HS Set ➔ HS Điểm ➔ Đối đầu'
+                  : sportType === 'BADMINTON'
+                    ? 'Đối đầu ➔ HS Ván ➔ HS Điểm ➔ Bốc thăm'
+                    : 'Đối đầu ➔ Hiệu số ➔ BT ➔ Thẻ ➔ Bốc thăm'}
+              </strong>
             </div>
-            {(tournament?.formatType || 'SINGLE_LEAGUE') !== 'SINGLE_LEAGUE' && (
+            {!isSetSport && (tournament?.formatType || 'SINGLE_LEAGUE') !== 'SINGLE_LEAGUE' && (
               <div className="flex items-center justify-between gap-2">
                 <span>Hòa Knockout:</span>
                 <strong className="text-amber-700">Không đá hiệp phụ ➔ Luân lưu 6m</strong>
               </div>
             )}
-            <div className="flex items-center justify-between gap-2">
-              <span>Phạt thẻ:</span>
-              <strong className="text-rose-600 text-right">
-                {(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
-                  ? 'Vàng 20k • 2 Vàng/trận 50k • Đỏ trực tiếp 100k'
-                  : '01 thẻ đỏ trực tiếp = 02 thẻ vàng'}
-              </strong>
-            </div>
+            {!isSetSport && (
+              <div className="flex items-center justify-between gap-2">
+                <span>Phạt thẻ:</span>
+                <strong className="text-rose-600 text-right">
+                  {(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
+                    ? 'Vàng 20k • 2 Vàng/trận 50k • Đỏ trực tiếp 100k'
+                    : '01 thẻ đỏ trực tiếp = 02 thẻ vàng'}
+                </strong>
+              </div>
+            )}
           </div>
         </div>
 

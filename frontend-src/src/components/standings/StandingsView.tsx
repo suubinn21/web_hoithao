@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Team, Match, UserRole, Tournament, getGroupLetters } from '@/types';
+import { Team, Match, UserRole, Tournament, getGroupLetters, getSportMeta } from '@/types';
 import { RankingEngine } from '@/services/rankingEngine';
 import { KnockoutEngine } from '@/services/knockoutEngine';
 import { StorageService } from '@/services/storage';
@@ -23,6 +23,9 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
   onRefresh,
 }) => {
   const isSingleLeague = (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE';
+  const sportType = tournament?.sportType || 'FOOTBALL';
+  const sportMeta = getSportMeta(sportType);
+  const isSetSport = sportType === 'BADMINTON' || sportType === 'VOLLEYBALL';
   const groups = isSingleLeague ? ['LEAGUE'] : getGroupLetters(tournament?.numberOfGroups || 4);
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
 
@@ -38,7 +41,9 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
     setTieBreakGroup(group);
     setOrderedTieBreakIds([...tiedTeamIds]);
     setTieBreakReason(
-      'Các đội bằng điểm và bằng tất cả các chỉ số phụ (Đối đầu, Hiệu số, Tổng bàn thắng, Thẻ phạt). Phân định thứ hạng theo kết quả bốc thăm của BTC.'
+      isSetSport
+        ? 'Các đội bằng điểm và bằng tất cả các chỉ số phụ (Số trận thắng, Hiệu số set, Hiệu số điểm quả/cầu, Đối đầu). Phân định thứ hạng theo kết quả bốc thăm của BTC.'
+        : 'Các đội bằng điểm và bằng tất cả các chỉ số phụ (Đối đầu, Hiệu số, Tổng bàn thắng, Thẻ phạt). Phân định thứ hạng theo kết quả bốc thăm của BTC.'
     );
     setTieBreakModalOpen(true);
   };
@@ -86,28 +91,32 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
   const nextStageLabel = isSingleLeague
     ? 'Top 3 nhận Huy chương Nhất – Nhì – Ba'
     : (tournament?.numberOfGroups || 4) === 2
-    ? 'Vào Bán kết'
-    : 'Vào Tứ kết';
+      ? 'Vào Bán kết'
+      : 'Vào Tứ kết';
 
   return (
     <div className="space-y-6">
-      
+
       {/* Top Header Card */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 text-slate-800">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
-              RANKING ENGINE TỰ ĐỘNG
+              {sportMeta.icon} RANKING ENGINE ({sportMeta.label.toUpperCase()})
             </span>
-            <span className="text-xs text-slate-500">Quy định Cách tính điểm &amp; Xếp hạng (Mục V.3)</span>
+            <span className="text-xs text-slate-500">Quy định Cách tính điểm &amp; Xếp hạng</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
             {isSingleLeague
-              ? `Bảng Xếp Hạng Chung Cuộc (Vòng Tròn 1 Lượt • ${teams.length} Đội)`
+              ? `Bảng Xếp Hạng Chung Cuộc (Vòng Tròn 1 Lượt • ${teams.length} ${sportMeta.unitShortLabel})`
               : `Bảng Xếp Hạng Vòng Bảng (${groups.length} Bảng: ${groups.join(', ')})`}
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Thắng 3đ, Hòa 1đ, Thua 0đ. Nếu bằng điểm xét thứ tự: Đối đầu trực tiếp ➔ Hiệu số (+/-) ➔ Tổng bàn thắng ➔ Thẻ phạt (1 thẻ đỏ = 2 thẻ vàng) ➔ Bốc thăm BTC.
+            {sportType === 'VOLLEYBALL'
+              ? 'Chuẩn FIVB: Thắng 2-0/3-0/3-1 = 3đ • Thắng 2-1/3-2 = 2đ • Thua 1-2/2-3 = 1đ • Thua cách biệt = 0đ. Xét: Trận thắng ➔ Hiệu số set ➔ Hiệu số điểm quả ➔ Đối đầu.'
+              : sportType === 'BADMINTON'
+                ? 'Chuẩn BWF: Thắng = 3đ • Thua = 0đ (không có hòa). Xét: Đối đầu ➔ Hiệu số ván thắng/thua ➔ Hiệu số điểm cầu ➔ Tổng điểm cầu thắng.'
+                : 'Thắng 3đ, Hòa 1đ, Thua 0đ. Nếu bằng điểm xét thứ tự: Đối đầu trực tiếp ➔ Hiệu số (+/-) ➔ Tổng bàn thắng ➔ Thẻ phạt (1 thẻ đỏ = 2 thẻ vàng) ➔ Bốc thăm BTC.'}
           </p>
         </div>
 
@@ -116,11 +125,10 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
           <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 self-start md:self-auto flex-wrap">
             <button
               onClick={() => setSelectedGroup('ALL')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                selectedGroup === 'ALL'
-                  ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-xs font-black'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${selectedGroup === 'ALL'
+                ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-xs font-black'
+                : 'text-slate-600 hover:text-slate-900'
+                }`}
             >
               Tất Cả ({groups.length} Bảng)
             </button>
@@ -128,11 +136,10 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
               <button
                 key={g}
                 onClick={() => setSelectedGroup(g)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  selectedGroup === g
-                    ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-xs font-black'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${selectedGroup === g
+                  ? 'bg-gradient-to-r from-blue-600 to-sky-600 text-white shadow-xs font-black'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 Bảng {g}
               </button>
@@ -147,8 +154,8 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
           .filter((g) => isSingleLeague || selectedGroup === 'ALL' || selectedGroup === g)
           .map((grp) => {
             const standings = isSingleLeague
-              ? RankingEngine.calculateLeagueStandings(teams, matches)
-              : RankingEngine.calculateGroupStandings(grp, teams, matches);
+              ? RankingEngine.calculateLeagueStandings(teams, matches, sportType)
+              : RankingEngine.calculateGroupStandings(grp, teams, matches, sportType);
             const hasTieBreakIssue = standings.some((s) => s.needsBtcTieBreak);
             const tiedTeamIds = standings.filter((s) => s.needsBtcTieBreak).map((s) => s.teamId);
 
@@ -202,15 +209,29 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
                     <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[11px]">
                       <tr>
                         <th className="py-3 px-3 text-center w-10">STT</th>
-                        <th className="py-3 px-3">ĐỘI BÓNG</th>
+                        <th className="py-3 px-3">{sportMeta.unitLabel.toUpperCase()}</th>
                         <th className="py-3 px-2 text-center" title="Số trận đã đấu">ST</th>
-                        <th className="py-3 px-2 text-center" title="Thắng (03 điểm)">T</th>
-                        <th className="py-3 px-2 text-center" title="Hòa (01 điểm)">H</th>
-                        <th className="py-3 px-2 text-center" title="Thua (00 điểm)">B</th>
-                        <th className="py-3 px-2 text-center" title="Tổng bàn thắng">BT</th>
-                        <th className="py-3 px-2 text-center" title="Tổng bàn thua">BB</th>
-                        <th className="py-3 px-2 text-center" title="Hiệu số (tổng bàn thắng - tổng bàn thua)">+/-</th>
-                        <th className="py-3 px-2 text-center" title="Thẻ phạt vòng bảng (Mỗi thẻ đỏ trực tiếp = 02 thẻ vàng, ít thẻ hơn xếp trên)">THẺ</th>
+                        <th className="py-3 px-2 text-center" title="Số trận thắng">T</th>
+                        {!isSetSport && (
+                          <th className="py-3 px-2 text-center" title="Hòa (1 điểm)">H</th>
+                        )}
+                        <th className="py-3 px-2 text-center" title="Số trận thua">B</th>
+                        <th className="py-3 px-2 text-center" title={isSetSport ? 'Số set/ván thắng' : 'Tổng bàn thắng'}>
+                          {sportType === 'BADMINTON' ? 'VÁN THẮNG' : sportType === 'VOLLEYBALL' ? 'SET THẮNG' : 'BT'}
+                        </th>
+                        <th className="py-3 px-2 text-center" title={isSetSport ? 'Số set/ván thua' : 'Tổng bàn thua'}>
+                          {sportType === 'BADMINTON' ? 'VÁN THUA' : sportType === 'VOLLEYBALL' ? 'SET THUA' : 'BB'}
+                        </th>
+                        <th className="py-3 px-2 text-center" title={isSetSport ? 'Hiệu số set/ván' : 'Hiệu số (tổng bàn thắng - tổng bàn thua)'}>
+                          {sportType === 'BADMINTON' ? 'HS VÁN' : sportType === 'VOLLEYBALL' ? 'HS SET' : '+/-'}
+                        </th>
+                        {isSetSport ? (
+                          <th className="py-3 px-2 text-center" title="Tổng điểm ghi được / thua và hiệu số điểm quả/cầu">
+                            {sportType === 'BADMINTON' ? 'ĐIỂM CẦU (+/-)' : 'ĐIỂM QUẢ (+/-)'}
+                          </th>
+                        ) : (
+                          <th className="py-3 px-2 text-center" title="Thẻ phạt vòng bảng (Mỗi thẻ đỏ trực tiếp = 02 thẻ vàng, ít thẻ hơn xếp trên)">THẺ</th>
+                        )}
                         <th className="py-3 px-3 text-center font-black text-blue-700" title="Tổng điểm">Đ</th>
                       </tr>
                     </thead>
@@ -223,35 +244,33 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
                           isSingleLeague && idx === 0
                             ? 'bg-amber-100 text-amber-800 border-amber-300'
                             : isSingleLeague && idx === 1
-                            ? 'bg-slate-200 text-slate-800 border-slate-300'
-                            : isSingleLeague && idx === 2
-                            ? 'bg-orange-100 text-orange-800 border-orange-300'
-                            : 'bg-blue-100 text-blue-700 border-blue-200';
+                              ? 'bg-slate-200 text-slate-800 border-slate-300'
+                              : isSingleLeague && idx === 2
+                                ? 'bg-orange-100 text-orange-800 border-orange-300'
+                                : 'bg-blue-100 text-blue-700 border-blue-200';
 
                         return (
                           <tr
                             key={team.teamId}
-                            className={`transition-colors ${
-                              isSingleLeague && idx === 0
-                                ? 'bg-amber-50/50 hover:bg-amber-50'
-                                : isQualifying
+                            className={`transition-colors ${isSingleLeague && idx === 0
+                              ? 'bg-amber-50/50 hover:bg-amber-50'
+                              : isQualifying
                                 ? 'bg-blue-50/30 hover:bg-blue-50/60'
                                 : 'hover:bg-slate-50'
-                            }`}
+                              }`}
                           >
                             <td className="py-3 px-3 text-center">
                               <span
-                                className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-bold text-[11px] font-mono border ${
-                                  isQualifying ? medalBadge : 'text-slate-400 border-transparent'
-                                }`}
+                                className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-bold text-[11px] font-mono border ${isQualifying ? medalBadge : 'text-slate-400 border-transparent'
+                                  }`}
                               >
                                 {isSingleLeague && idx === 0
                                   ? '🥇'
                                   : isSingleLeague && idx === 1
-                                  ? '🥈'
-                                  : isSingleLeague && idx === 2
-                                  ? '🥉'
-                                  : idx + 1}
+                                    ? '🥈'
+                                    : isSingleLeague && idx === 2
+                                      ? '🥉'
+                                      : idx + 1}
                               </span>
                             </td>
 
@@ -276,7 +295,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
                                     className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded font-bold"
                                     title="Đã phân định thứ hạng bằng bốc thăm"
                                   >
-                                    🎲 Đã bốc thăm
+                                    Đã bốc thăm
                                   </span>
                                 )}
                               </div>
@@ -284,38 +303,55 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
 
                             <td className="py-3 px-2 text-center font-mono text-slate-600">{team.played}</td>
                             <td className="py-3 px-2 text-center font-mono text-slate-600">{team.won}</td>
-                            <td className="py-3 px-2 text-center font-mono text-slate-600">{team.drawn}</td>
+                            {!isSetSport && (
+                              <td className="py-3 px-2 text-center font-mono text-slate-600">{team.drawn}</td>
+                            )}
                             <td className="py-3 px-2 text-center font-mono text-slate-600">{team.lost}</td>
                             <td className="py-3 px-2 text-center font-mono text-slate-600">{team.goalsFor}</td>
                             <td className="py-3 px-2 text-center font-mono text-slate-600">{team.goalsAgainst}</td>
                             <td
-                              className={`py-3 px-2 text-center font-mono font-bold ${
-                                team.goalDifference > 0
-                                  ? 'text-blue-600'
-                                  : team.goalDifference < 0
+                              className={`py-3 px-2 text-center font-mono font-bold ${team.goalDifference > 0
+                                ? 'text-blue-600'
+                                : team.goalDifference < 0
                                   ? 'text-rose-600'
                                   : 'text-slate-400'
-                              }`}
+                                }`}
                             >
                               {team.goalDifference > 0 ? `+${team.goalDifference}` : team.goalDifference}
                             </td>
-                            <td
-                              className="py-3 px-2 text-center font-mono text-[11px]"
-                              title={`Điểm thẻ quy đổi: ${team.cardPoints} (${team.yellowCards} thẻ vàng, ${team.redCards} thẻ đỏ trực tiếp × 2)`}
-                            >
-                              {team.yellowCards === 0 && team.redCards === 0 ? (
-                                <span className="text-slate-300">-</span>
-                              ) : (
-                                <span className="inline-flex items-center justify-center gap-1 font-bold">
-                                  {team.yellowCards > 0 && (
-                                    <span className="text-amber-600">{team.yellowCards}🟨</span>
-                                  )}
-                                  {team.redCards > 0 && (
-                                    <span className="text-rose-600">{team.redCards}🟥</span>
-                                  )}
+                            {isSetSport ? (
+                              <td className="py-3 px-2 text-center font-mono text-[11px] text-slate-700">
+                                <span>{team.pointsFor || 0}-{team.pointsAgainst || 0}</span>
+                                <span
+                                  className={`ml-1 font-bold ${(team.pointsDifference || 0) > 0
+                                    ? 'text-blue-600'
+                                    : (team.pointsDifference || 0) < 0
+                                      ? 'text-rose-600'
+                                      : 'text-slate-400'
+                                    }`}
+                                >
+                                  ({(team.pointsDifference || 0) > 0 ? `+${team.pointsDifference}` : (team.pointsDifference || 0)})
                                 </span>
-                              )}
-                            </td>
+                              </td>
+                            ) : (
+                              <td
+                                className="py-3 px-2 text-center font-mono text-[11px]"
+                                title={`Điểm thẻ quy đổi: ${team.cardPoints} (${team.yellowCards} thẻ vàng, ${team.redCards} thẻ đỏ trực tiếp × 2)`}
+                              >
+                                {team.yellowCards === 0 && team.redCards === 0 ? (
+                                  <span className="text-slate-300">-</span>
+                                ) : (
+                                  <span className="inline-flex items-center justify-center gap-1 font-bold">
+                                    {team.yellowCards > 0 && (
+                                      <span className="text-amber-600">{team.yellowCards}🟨</span>
+                                    )}
+                                    {team.redCards > 0 && (
+                                      <span className="text-rose-600">{team.redCards}🟥</span>
+                                    )}
+                                  </span>
+                                )}
+                              </td>
+                            )}
                             <td className="py-3 px-3 text-center font-mono font-black text-sm text-blue-700 bg-blue-50/80">
                               {team.points}
                             </td>
@@ -336,7 +372,13 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
                         : `Top ${tournament?.advancePerGroup || 2}: ${nextStageLabel}`}
                     </span>
                   </div>
-                  <span>Đối đầu ➔ Hiệu số ➔ Tổng bàn thắng ➔ Thẻ phạt ➔ Bốc thăm</span>
+                  <span>
+                    {sportType === 'VOLLEYBALL'
+                      ? 'Trận thắng ➔ Hiệu số set ➔ Hiệu số điểm quả ➔ Đối đầu ➔ Bốc thăm'
+                      : sportType === 'BADMINTON'
+                        ? 'Đối đầu ➔ Hiệu số ván ➔ Hiệu số điểm cầu ➔ Tổng điểm cầu ➔ Bốc thăm'
+                        : 'Đối đầu ➔ Hiệu số ➔ Tổng bàn thắng ➔ Thẻ phạt ➔ Bốc thăm'}
+                  </span>
                 </div>
               </div>
             );
@@ -348,41 +390,87 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
         <div className="flex items-center gap-2 mb-3">
           <BookOpen className="w-4 h-4 text-blue-600" />
           <h3 className="text-sm font-black uppercase tracking-wider text-slate-900">
-            Quy Định Cách Tính Điểm &amp; Xếp Hạng Chính Thức
+            Quy Định Cách Tính Điểm &amp; Xếp Hạng Chính Thức ({sportMeta.label})
           </h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-700">
-          <div className="space-y-2">
-            <div className="font-bold text-slate-900">Cách tính điểm vòng bảng:</div>
-            <ul className="space-y-1 pl-4 list-disc">
-              <li><strong>Thắng:</strong> 03 điểm</li>
-              <li><strong>Hòa:</strong> 01 điểm</li>
-              <li><strong>Thua:</strong> 00 điểm</li>
-            </ul>
-            <p className="pt-1">
-              <strong className="text-slate-900">Xếp hạng:</strong> Tính tổng số điểm của các đội đạt được.
-            </p>
-            <p className="font-bold text-amber-700 pt-1">
-              * Không thi đấu hiệp phụ (hòa ở vòng loại trực tiếp sẽ thi đấu luân lưu 6m).
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="font-bold text-slate-900">
-              * Nếu hai đội trở lên bằng điểm thì trước hết xét chỉ số của các trận đấu giữa các đội đó với nhau theo thứ tự:
+        {sportType === 'VOLLEYBALL' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-700">
+            <div className="space-y-2">
+              <div className="font-bold text-slate-900">Cách tính điểm Bóng Chuyền (Chuẩn FIVB):</div>
+              <ul className="space-y-1 pl-4 list-disc">
+                <li><strong>Thắng cách biệt (2-0 ở BO3; 3-0 hoặc 3-1 ở BO5):</strong> 3 điểm</li>
+                <li><strong>Thắng ở set quyết định (2-1 ở BO3; 3-2 ở BO5):</strong> 2 điểm</li>
+                <li><strong>Thua ở set quyết định (1-2 ở BO3; 2-3 ở BO5):</strong> 1 điểm</li>
+                <li><strong>Thua cách biệt (0-2; 0-3 hoặc 1-3):</strong> 0 điểm</li>
+              </ul>
             </div>
-            <ol className="space-y-1 pl-4 list-decimal">
-              <li>Kết quả đối đầu giữa các đội đó với nhau.</li>
-              <li>Hiệu số (tổng bàn thắng / tổng bàn thua).</li>
-              <li>Tổng bàn thắng.</li>
-              <li>
-                Thẻ đỏ, thẻ vàng (mỗi thẻ đỏ trực tiếp tính bằng <strong>02 thẻ vàng</strong>) — đội nào bị ít thẻ hơn sẽ xếp trên.
-              </li>
-              <li>Bốc thăm.</li>
-            </ol>
+            <div className="space-y-2">
+              <div className="font-bold text-slate-900">Thứ tự xét khi hai đội trở lên bằng điểm:</div>
+              <ol className="space-y-1 pl-4 list-decimal">
+                <li>Tổng số trận thắng.</li>
+                <li>Hiệu số set (Set thắng - Set thua).</li>
+                <li>Hiệu số điểm quả (Điểm ghi được - Điểm bị ghi).</li>
+                <li>Tổng điểm quả ghi được.</li>
+                <li>Kết quả đối đầu trực tiếp ➔ Bốc thăm BTC.</li>
+              </ol>
+            </div>
           </div>
-        </div>
+        ) : sportType === 'BADMINTON' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-700">
+            <div className="space-y-2">
+              <div className="font-bold text-slate-900">Cách tính điểm Cầu Lông (Chuẩn BWF):</div>
+              <ul className="space-y-1 pl-4 list-disc">
+                <li><strong>Thắng trận:</strong> 3 điểm</li>
+                <li><strong>Thua trận:</strong> 0 điểm (không có kết quả hòa)</li>
+              </ul>
+              <p className="pt-1 text-slate-600">
+                Mỗi ván đánh chạm {tournament?.setConfig?.pointsPerSet || 21} điểm (cách biệt 2 điểm, tối đa 30 điểm).
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div className="font-bold text-slate-900">Thứ tự xét khi bằng điểm:</div>
+              <ol className="space-y-1 pl-4 list-decimal">
+                <li>Kết quả đối đầu trực tiếp giữa các đội/cặp bằng điểm.</li>
+                <li>Hiệu số ván (Ván thắng - Ván thua).</li>
+                <li>Hiệu số điểm cầu (Điểm ghi được - Điểm mất).</li>
+                <li>Tổng điểm cầu ghi được ➔ Bốc thăm BTC.</li>
+              </ol>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-700">
+            <div className="space-y-2">
+              <div className="font-bold text-slate-900">Cách tính điểm vòng bảng:</div>
+              <ul className="space-y-1 pl-4 list-disc">
+                <li><strong>Thắng:</strong> 3 điểm</li>
+                <li><strong>Hòa:</strong> 1 điểm</li>
+                <li><strong>Thua:</strong> 0 điểm</li>
+              </ul>
+              <p className="pt-1">
+                <strong className="text-slate-900">Xếp hạng:</strong> Tính tổng số điểm của các đội đạt được.
+              </p>
+              <p className="font-bold text-amber-700 pt-1">
+                * Không thi đấu hiệp phụ (hòa ở vòng loại trực tiếp sẽ thi đấu luân lưu 6m).
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="font-bold text-slate-900">
+                * Nếu hai đội trở lên bằng điểm thì trước hết xét chỉ số của các trận đấu giữa các đội đó với nhau theo thứ tự:
+              </div>
+              <ol className="space-y-1 pl-4 list-decimal">
+                <li>Kết quả đối đầu giữa các đội đó với nhau.</li>
+                <li>Hiệu số (tổng bàn thắng / tổng bàn thua).</li>
+                <li>Tổng bàn thắng.</li>
+                <li>
+                  Thẻ đỏ, thẻ vàng (mỗi thẻ đỏ trực tiếp tính bằng <strong>02 thẻ vàng</strong>) — đội nào bị ít thẻ hơn sẽ xếp trên.
+                </li>
+                <li>Bốc thăm.</li>
+              </ol>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tie Break Draw Modal */}
@@ -418,19 +506,17 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
                   return (
                     <div
                       key={tId}
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        index === 0
-                          ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
-                          : 'bg-slate-50 border-slate-200 text-slate-700'
-                      }`}
+                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${index === 0
+                        ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
+                        : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }`}
                     >
                       <div className="flex items-center gap-2.5">
                         <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-black ${
-                            index === 0
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-slate-200 text-slate-700'
-                          }`}
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-black ${index === 0
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                            }`}
                         >
                           {index + 1}
                         </span>

@@ -2,7 +2,20 @@
 
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { Match, Team, MatchEvent, CardType, UserRole, Tournament } from '@/types';
+import {
+  Match,
+  Team,
+  MatchEvent,
+  MatchSetScore,
+  CardType,
+  UserRole,
+  Tournament,
+  getSportMeta,
+  getEffectiveSetConfig,
+  determineSetWinner,
+  computeSetsSummary,
+  formatMatchSetsCompact,
+} from '@/types';
 import { StorageService } from '@/services/storage';
 import { SoundFX } from '@/utils/soundEffects';
 import { DisciplineEngine } from '@/services/disciplineEngine';
@@ -43,6 +56,11 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
   tournament,
 }) => {
   const isSingleLeague = (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE';
+  const sportType = tournament?.sportType || 'FOOTBALL';
+  const sportMeta = getSportMeta(sportType);
+  const isSetSport = sportMeta.isSetSport;
+  const setConfig = getEffectiveSetConfig(tournament);
+  const setsToWin = Math.ceil(setConfig.bestOf / 2);
 
   // Find current match or default to first LIVE match or first match
   const defaultMatchId =
@@ -63,6 +81,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
   const [postEditModalOpen, setPostEditModalOpen] = useState(false);
   const [forfeitModalOpen, setForfeitModalOpen] = useState(false);
   const [timeConfigModalOpen, setTimeConfigModalOpen] = useState(false);
+  const [quickSetsModalOpen, setQuickSetsModalOpen] = useState(false);
+  const [activeSetNum, setActiveSetNum] = useState<number>(1);
+  const [quickSetsDraft, setQuickSetsDraft] = useState<MatchSetScore[]>([]);
+  const [quickSetsFinishMatch, setQuickSetsFinishMatch] = useState<boolean>(true);
   const [editMatchDurationInput, setEditMatchDurationInput] = useState<number>(60);
   const [editMatchBreakInput, setEditMatchBreakInput] = useState<number>(5);
   const [editMatchCurrentMinInput, setEditMatchCurrentMinInput] = useState<number>(0);
@@ -111,27 +133,30 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     return (a.matchNumber || 0) - (b.matchNumber || 0);
   });
 
-  // Synchronize timer with match state
+  // Synchronize timer & active set with match state
   useEffect(() => {
     if (activeMatch) {
       setSeconds(activeMatch.currentMinute * 60);
       setTimerRunning(activeMatch.status === 'LIVE');
       setEventMinute(Math.max(1, activeMatch.currentMinute));
+      setActiveSetNum(Math.min(setConfig.bestOf, Math.max(1, activeMatch.currentSet || 1)));
     }
-  }, [activeMatchId, activeMatch?.currentMinute, activeMatch?.status]);
+  }, [activeMatchId, activeMatch?.currentMinute, activeMatch?.status, activeMatch?.currentSet, setConfig.bestOf]);
 
-  // Live timer interval (continuous clock without stoppage time)
+  // Live timer interval (continuous clock without stoppage time for Football; stopwatch only for Set sports)
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (timerRunning && activeMatch && activeMatch.status === 'LIVE') {
       interval = setInterval(() => {
         setSeconds((prev) => {
           const next = prev + 1;
-          const min = Math.floor(next / 60);
-          if (min === halfDurationMinutes && activeMatch.half === 1) {
-            handleSetHalftime();
-          } else if (min >= matchDurationMinutes) {
-            handleFinishMatch();
+          if (!isSetSport) {
+            const min = Math.floor(next / 60);
+            if (min === halfDurationMinutes && activeMatch.half === 1) {
+              handleSetHalftime();
+            } else if (min >= matchDurationMinutes) {
+              handleFinishMatch();
+            }
           }
           return next;
         });
@@ -140,7 +165,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [timerRunning, activeMatch?.half, activeMatch?.status, halfDurationMinutes, matchDurationMinutes]);
+  }, [timerRunning, activeMatch?.half, activeMatch?.status, halfDurationMinutes, matchDurationMinutes, isSetSport]);
 
   const canEdit =
     currentRole === 'SUPER_ADMIN' ||
@@ -212,21 +237,29 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     SoundFX.playWhistle();
     setTimerRunning(false);
 
-    // If knockout (only in GROUP_KNOCKOUT) and tied -> require penalty shootout modal
+    // If knockout (only in GROUP_KNOCKOUT) and tied -> require penalty shootout modal (Football only)
     const isKnockout = !isSingleLeague && activeMatch.round !== 'GROUP';
     const isTied = activeMatch.homeScore === activeMatch.awayScore;
 
-    if (isKnockout && isTied && !activeMatch.penaltyShootout) {
+    if (!isSetSport && isKnockout && isTied && !activeMatch.penaltyShootout) {
       setPenaltyModalOpen(true);
       return;
     }
+
+    const computedWinnerId =
+      activeMatch.homeScore > activeMatch.awayScore
+        ? activeMatch.homeTeamId
+        : activeMatch.awayScore > activeMatch.homeScore
+          ? activeMatch.awayTeamId
+          : activeMatch.winnerTeamId;
 
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
             ...m,
             status: 'FINISHED' as const,
-            currentMinute: matchDurationMinutes,
+            currentMinute: isSetSport ? Math.floor(seconds / 60) : matchDurationMinutes,
+            ...(computedWinnerId ? { winnerTeamId: computedWinnerId } : {}),
             completedAt: new Date().toISOString(),
           }
         : m
@@ -238,19 +271,224 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     onMatchesUpdate(finalMatches);
     StorageService.saveMatches(finalMatches);
 
-    DisciplineEngine.evaluateAllPlayers(
-      teams,
-      finalMatches,
-      tournament?.formatType || 'SINGLE_LEAGUE'
-    );
-    StorageService.saveTeams(teams);
+    if (!isSetSport) {
+      DisciplineEngine.evaluateAllPlayers(
+        teams,
+        finalMatches,
+        tournament?.formatType || 'SINGLE_LEAGUE'
+      );
+      StorageService.saveTeams(teams);
+    }
 
+    const setsCompact = formatMatchSetsCompact(activeMatch);
     StorageService.logAction(
       currentRole,
       currentRole,
       'KẾT THÚC TRẬN ĐẤU (FULL TIME)',
       activeMatch.roundLabel,
-      `Tỷ số chung cuộc: ${homeTeam?.name} ${activeMatch.homeScore} - ${activeMatch.awayScore} ${awayTeam?.name}.`
+      `Tỷ số chung cuộc: ${homeTeam?.name} ${activeMatch.homeScore} - ${activeMatch.awayScore} ${awayTeam?.name}${setsCompact ? ` (${setsCompact})` : ''}.`
+    );
+  };
+
+  const getMatchSets = (match: Match): MatchSetScore[] => {
+    const existing = Array.isArray(match.sets) ? match.sets : [];
+    const len = Math.max(existing.length, activeSetNum, 1);
+    return Array.from({ length: Math.min(setConfig.bestOf, len) }, (_, idx) => {
+      const setNumber = idx + 1;
+      const found = existing.find((s) => s.setNumber === setNumber);
+      return found ? { ...found } : { setNumber, homePoints: 0, awayPoints: 0 };
+    });
+  };
+
+  const handleUpdateSetPoints = (setNum: number, nextHomePts: number, nextAwayPts: number) => {
+    if (!activeMatch) return;
+    const clampedHome = Math.max(0, Math.min(99, Number(nextHomePts) || 0));
+    const clampedAway = Math.max(0, Math.min(99, Number(nextAwayPts) || 0));
+
+    const currentSets = getMatchSets(activeMatch);
+    const mergedSets: MatchSetScore[] = Array.from(
+      { length: Math.max(currentSets.length, setNum) },
+      (_, idx) => {
+        const sNum = idx + 1;
+        const base = currentSets.find((s) => s.setNumber === sNum) || {
+          setNumber: sNum,
+          homePoints: 0,
+          awayPoints: 0,
+        };
+        if (sNum === setNum) {
+          const w = determineSetWinner(clampedHome, clampedAway, sNum, setConfig);
+          return { setNumber: sNum, homePoints: clampedHome, awayPoints: clampedAway, ...(w ? { winner: w } : {}) };
+        }
+        return base;
+      }
+    );
+
+    const summary = computeSetsSummary(mergedSets, setConfig);
+    const nextWinnerId =
+      summary.homeSetsWon >= setsToWin
+        ? activeMatch.homeTeamId
+        : summary.awaySetsWon >= setsToWin
+          ? activeMatch.awayTeamId
+          : undefined;
+
+    const updated = matches.map((m) =>
+      m.id === activeMatch.id
+        ? {
+            ...m,
+            status: m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
+            homeScore: summary.homeSetsWon,
+            awayScore: summary.awaySetsWon,
+            sets: summary.normalizedSets,
+            currentSet: setNum,
+            winnerTeamId: nextWinnerId,
+          }
+        : m
+    );
+    onMatchesUpdate(updated);
+    StorageService.saveMatches(updated);
+  };
+
+  const handleConfirmSetAndAdvance = () => {
+    if (!activeMatch) return;
+    const currentSets = getMatchSets(activeMatch);
+    const curSet = currentSets.find((s) => s.setNumber === activeSetNum) || {
+      setNumber: activeSetNum,
+      homePoints: 0,
+      awayPoints: 0,
+    };
+    if (curSet.homePoints === curSet.awayPoints) {
+      alert(`Set ${activeSetNum} đang hòa điểm (${curSet.homePoints}-${curSet.awayPoints}), chưa xác định đội thắng set!`);
+      return;
+    }
+    const setWinnerSide: 'HOME' | 'AWAY' = curSet.homePoints > curSet.awayPoints ? 'HOME' : 'AWAY';
+    const winningTeam = setWinnerSide === 'HOME' ? homeTeam : awayTeam;
+
+    const updatedSets = currentSets.map((s) =>
+      s.setNumber === activeSetNum ? { ...s, winner: setWinnerSide } : s
+    );
+    const summary = computeSetsSummary(updatedSets, setConfig);
+    const nextSet = Math.min(setConfig.bestOf, activeSetNum + 1);
+    const hasMatchWinner = summary.homeSetsWon >= setsToWin || summary.awaySetsWon >= setsToWin;
+
+    const setEvent: MatchEvent = {
+      id: `EV-SET-${Date.now()}`,
+      matchId: activeMatch.id,
+      type: 'SET_WIN',
+      minute: Math.floor(seconds / 60),
+      teamId: winningTeam?.id || activeMatch.homeTeamId,
+      setNumber: activeSetNum,
+      setScoreLabel: `${curSet.homePoints}-${curSet.awayPoints}`,
+      reason: `${winningTeam?.name || 'Đội thắng'} thắng Set ${activeSetNum} với tỷ số ${curSet.homePoints} - ${curSet.awayPoints}`,
+      timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const updated = matches.map((m) =>
+      m.id === activeMatch.id
+        ? {
+            ...m,
+            status: 'LIVE' as const,
+            homeScore: summary.homeSetsWon,
+            awayScore: summary.awaySetsWon,
+            sets: summary.normalizedSets,
+            currentSet: hasMatchWinner ? activeSetNum : nextSet,
+            winnerTeamId:
+              summary.homeSetsWon >= setsToWin
+                ? activeMatch.homeTeamId
+                : summary.awaySetsWon >= setsToWin
+                  ? activeMatch.awayTeamId
+                  : undefined,
+            events: [...m.events, setEvent],
+          }
+        : m
+    );
+    onMatchesUpdate(updated);
+    StorageService.saveMatches(updated);
+    if (!hasMatchWinner && activeSetNum < setConfig.bestOf) {
+      setActiveSetNum(nextSet);
+    }
+    triggerCelebration();
+
+    StorageService.logAction(
+      currentRole,
+      currentRole,
+      `CHỐT SET ${activeSetNum} (${sportMeta.label.toUpperCase()})`,
+      activeMatch.roundLabel,
+      `Set ${activeSetNum}: ${homeTeam?.shortName} ${curSet.homePoints} - ${curSet.awayPoints} ${awayTeam?.shortName}. Tỷ số set: ${summary.homeSetsWon} - ${summary.awaySetsWon}`
+    );
+  };
+
+  const handleOpenQuickSets = () => {
+    if (!activeMatch) return;
+    const existing = Array.isArray(activeMatch.sets) ? activeMatch.sets : [];
+    const draft = Array.from({ length: setConfig.bestOf }, (_, idx) => {
+      const sNum = idx + 1;
+      const found = existing.find((s) => s.setNumber === sNum);
+      return found ? { ...found } : { setNumber: sNum, homePoints: 0, awayPoints: 0 };
+    });
+    setQuickSetsDraft(draft);
+    setQuickSetsFinishMatch(true);
+    setQuickSetsModalOpen(true);
+  };
+
+  const handleSaveQuickSets = () => {
+    if (!activeMatch) return;
+    const nonZeroSets = quickSetsDraft.filter((s) => s.homePoints > 0 || s.awayPoints > 0);
+    const setsWithWinner: MatchSetScore[] = nonZeroSets.map((s) => {
+      const explicitWinner: 'HOME' | 'AWAY' | undefined =
+        determineSetWinner(s.homePoints, s.awayPoints, s.setNumber, setConfig) ||
+        (s.homePoints > s.awayPoints ? 'HOME' : s.awayPoints > s.homePoints ? 'AWAY' : undefined);
+      return {
+        setNumber: s.setNumber,
+        homePoints: Math.max(0, Number(s.homePoints) || 0),
+        awayPoints: Math.max(0, Number(s.awayPoints) || 0),
+        ...(explicitWinner ? { winner: explicitWinner } : {}),
+      };
+    });
+
+    const summary = computeSetsSummary(setsWithWinner, setConfig);
+    const winnerId =
+      summary.homeSetsWon > summary.awaySetsWon
+        ? activeMatch.homeTeamId
+        : summary.awaySetsWon > summary.homeSetsWon
+          ? activeMatch.awayTeamId
+          : undefined;
+    const shouldFinish =
+      quickSetsFinishMatch &&
+      (summary.homeSetsWon >= setsToWin || summary.awaySetsWon >= setsToWin);
+
+    const updated = matches.map((m) =>
+      m.id === activeMatch.id
+        ? {
+            ...m,
+            homeScore: summary.homeSetsWon,
+            awayScore: summary.awaySetsWon,
+            sets: summary.normalizedSets,
+            currentSet: Math.min(setConfig.bestOf, Math.max(1, summary.normalizedSets.length)),
+            winnerTeamId: winnerId,
+            status: shouldFinish ? ('FINISHED' as const) : m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
+            ...(shouldFinish ? { completedAt: new Date().toISOString() } : {}),
+          }
+        : m
+    );
+
+    const finalMatches = isSingleLeague
+      ? updated
+      : KnockoutEngine.generateOrUpdateBracket(teams, updated);
+    onMatchesUpdate(finalMatches);
+    StorageService.saveMatches(finalMatches);
+    setQuickSetsModalOpen(false);
+    if (shouldFinish) {
+      setTimerRunning(false);
+      triggerCelebration();
+    }
+
+    const setsStr = summary.normalizedSets.map((s) => `${s.homePoints}-${s.awayPoints}`).join(', ');
+    StorageService.logAction(
+      currentRole,
+      currentRole,
+      `NHẬP TỶ SỐ SET (${sportMeta.label.toUpperCase()})`,
+      activeMatch.roundLabel,
+      `${homeTeam?.shortName} ${summary.homeSetsWon} - ${summary.awaySetsWon} ${awayTeam?.shortName} (${setsStr || '0-0'})`
     );
   };
 
@@ -287,19 +525,29 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     );
   };
 
-  // Xử thua 0-3 (Đội đến trễ quá 10 phút / không đủ 3 cầu thủ / bỏ trận)
+  // Xử thua (Đội đến trễ quá 10 phút / không đủ người / bỏ trận)
   const handleConfirmForfeit = () => {
     if (!activeMatch || !forfeitTeamId) return;
     const isHomeForfeit = forfeitTeamId === activeMatch.homeTeamId;
     const forfeitedTeam = isHomeForfeit ? homeTeam : awayTeam;
     const winningTeam = isHomeForfeit ? awayTeam : homeTeam;
+    const forfeitWinScore = isSetSport ? setsToWin : 3;
+    const forfeitSets: MatchSetScore[] | undefined = isSetSport
+      ? Array.from({ length: setsToWin }, (_, i) => ({
+          setNumber: i + 1,
+          homePoints: isHomeForfeit ? 0 : setConfig.pointsPerSet,
+          awayPoints: isHomeForfeit ? setConfig.pointsPerSet : 0,
+          winner: (isHomeForfeit ? 'AWAY' : 'HOME') as 'HOME' | 'AWAY',
+        }))
+      : undefined;
+
     const noteEvent: MatchEvent = {
       id: `EV-FORFEIT-${Date.now()}`,
       matchId: activeMatch.id,
       type: 'NOTE',
       minute: activeMatch.currentMinute || 0,
       teamId: forfeitTeamId,
-      reason: `Xử thua 0–3 đội ${forfeitedTeam?.name || forfeitTeamId}: ${forfeitReason}`,
+      reason: `Xử thua 0–${forfeitWinScore} đội ${forfeitedTeam?.name || forfeitTeamId}: ${forfeitReason}`,
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -308,9 +556,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         ? {
             ...m,
             status: 'FINISHED' as const,
-            homeScore: isHomeForfeit ? 0 : 3,
-            awayScore: isHomeForfeit ? 3 : 0,
-            currentMinute: matchDurationMinutes,
+            homeScore: isHomeForfeit ? 0 : forfeitWinScore,
+            awayScore: isHomeForfeit ? forfeitWinScore : 0,
+            ...(forfeitSets ? { sets: forfeitSets } : {}),
+            currentMinute: isSetSport ? Math.floor(seconds / 60) : matchDurationMinutes,
             winnerTeamId: winningTeam?.id,
             isForfeit: true,
             forfeitedTeamId: forfeitTeamId,
@@ -332,9 +581,9 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     StorageService.logAction(
       currentRole,
       currentRole,
-      'XỬ THUA 0–3 (TRỄ QUÁ 10 PHÚT / BỎ CUỘC)',
+      `XỬ THUA 0–${forfeitWinScore} (TRỄ QUÁ 10 PHÚT / BỎ CUỘC)`,
       activeMatch.roundLabel,
-      `Xử thua 0–3 đối với ${forfeitedTeam?.name}. ${winningTeam?.name} thắng 3–0. Lý do: ${forfeitReason}`
+      `Xử thua 0–${forfeitWinScore} đối với ${forfeitedTeam?.name}. ${winningTeam?.name} thắng ${forfeitWinScore}–0. Lý do: ${forfeitReason}`
     );
   };
 
@@ -629,6 +878,11 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                   {m.homeScore} - {m.awayScore}
                 </span>
               </div>
+              {isSetSport && formatMatchSetsCompact(m) && (
+                <div className="text-[10px] font-mono text-cyan-300 mt-0.5 truncate">
+                  {formatMatchSetsCompact(m)}
+                </div>
+              )}
             </button>
           );
         })}
@@ -667,7 +921,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
             {activeMatch.status === 'LIVE' && (
               <span className="inline-flex items-center gap-1.5 bg-red-600 text-white border-2 border-red-300 px-3.5 py-1 rounded-full font-black animate-pulse text-xs shadow-lg shadow-red-600/40">
                 <span className="w-2.5 h-2.5 rounded-full bg-white"></span>
-                ĐANG DIỄN RA (HIỆP {activeMatch.half})
+                {isSetSport ? `ĐANG DIỄN RA (SET ${activeSetNum})` : `ĐANG DIỄN RA (HIỆP ${activeMatch.half})`}
               </span>
             )}
             {activeMatch.status === 'HALFTIME' && (
@@ -734,7 +988,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                     borderColor: homeTeam?.secondaryColor || '#34d399' 
                   }}
                 >
-                  <span className="drop-shadow-lg transform group-hover:scale-110 transition-transform">⚽</span>
+                  <span className="drop-shadow-lg transform group-hover:scale-110 transition-transform">{sportMeta.icon}</span>
                   <div className="absolute -bottom-2.5 px-3 py-0.5 rounded-full bg-[#081525] border-2 border-emerald-400 text-[10px] sm:text-xs font-black text-emerald-300 uppercase tracking-widest shadow-md">
                     Chủ Nhà
                   </div>
@@ -773,11 +1027,13 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 </div>
               </div>
               <div className="mb-2 text-[10px] font-bold text-cyan-200/90 bg-cyan-950/70 border border-cyan-500/40 px-2.5 py-0.5 rounded-full text-center">
-                2 × {halfDurationMinutes}p • Nghỉ {breakDurationMinutes}p • Không bù giờ
+                {isSetSport
+                  ? `TỶ SỐ VÁN / SET (BO${setConfig.bestOf} • ${setConfig.pointsPerSet}đ${setConfig.decidingSetPoints !== setConfig.pointsPerSet ? `, Set cuối ${setConfig.decidingSetPoints}đ` : ''})`
+                  : `2 × ${halfDurationMinutes}p • Nghỉ ${breakDurationMinutes}p • Không bù giờ`}
               </div>
               {activeMatch.isForfeit && (
                 <div className="mb-2 text-[10px] font-black text-rose-200 bg-rose-900/80 border border-rose-400 px-3 py-0.5 rounded-full text-center">
-                  ⚖️ ĐÃ XỬ THUA 0–3: {activeMatch.forfeitReason}
+                  ⚖️ ĐÃ XỬ THUA 0–{isSetSport ? setsToWin : 3}: {activeMatch.forfeitReason}
                 </div>
               )}
 
@@ -793,7 +1049,9 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 {/* Center Colon / VS Separator */}
                 <div className="flex flex-col items-center justify-center px-1">
                   <span className="text-2xl sm:text-4xl font-mono font-black text-emerald-400 animate-pulse">:</span>
-                  <span className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest">VS</span>
+                  <span className="text-[10px] sm:text-xs font-black text-slate-400 uppercase tracking-widest">
+                    {isSetSport ? 'SET' : 'VS'}
+                  </span>
                 </div>
 
                 {/* Away Score Box */}
@@ -803,6 +1061,24 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Compact per-set score pills for Badminton / Volleyball */}
+              {isSetSport && Array.isArray(activeMatch.sets) && activeMatch.sets.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
+                  {activeMatch.sets.map((s) => (
+                    <span
+                      key={s.setNumber}
+                      className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border ${
+                        s.setNumber === activeSetNum && activeMatch.status !== 'FINISHED'
+                          ? 'bg-emerald-500/25 border-emerald-300 text-emerald-200'
+                          : 'bg-slate-900/80 border-slate-600 text-slate-200'
+                      }`}
+                    >
+                      Set {s.setNumber}: {s.homePoints}-{s.awayPoints}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {/* Penalty shootout badge if exists (Rule #8) */}
               {activeMatch.penaltyShootout && (
@@ -828,7 +1104,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                     borderColor: awayTeam?.secondaryColor || '#38bdf8' 
                   }}
                 >
-                  <span className="drop-shadow-lg transform group-hover:scale-110 transition-transform">⚽</span>
+                  <span className="drop-shadow-lg transform group-hover:scale-110 transition-transform">{sportMeta.icon}</span>
                   <div className="absolute -bottom-2.5 px-3 py-0.5 rounded-full bg-[#081525] border-2 border-cyan-400 text-[10px] sm:text-xs font-black text-cyan-300 uppercase tracking-widest shadow-md">
                     Đội Khách
                   </div>
@@ -856,6 +1132,155 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           </div>
         </div>
 
+        {/* Live Set Scorer Panel (Badminton & Volleyball) */}
+        {isSetSport && canEdit && activeMatch.status !== 'FINISHED' && (() => {
+          const allSets = Array.from({ length: setConfig.bestOf }, (_, idx) => {
+            const sNum = idx + 1;
+            const found = (activeMatch.sets || []).find((s) => s.setNumber === sNum);
+            return found || { setNumber: sNum, homePoints: 0, awayPoints: 0 };
+          });
+          const curSet = allSets.find((s) => s.setNumber === activeSetNum) || allSets[0];
+          const curSetWinner = determineSetWinner(curSet.homePoints, curSet.awayPoints, activeSetNum, setConfig);
+          const matchHasWinner = activeMatch.homeScore >= setsToWin || activeMatch.awayScore >= setsToWin;
+
+          return (
+            <div className="relative z-10 px-5 sm:px-8 py-4 bg-[#07182d]/95 border-t border-emerald-500/30 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{sportMeta.icon}</span>
+                  <span className="text-xs sm:text-sm font-black text-emerald-300 uppercase tracking-wider">
+                    Bảng Chấm Điểm Trực Tiếp Từng Set (BO{setConfig.bestOf})
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {allSets.map((s) => {
+                    const isCur = s.setNumber === activeSetNum;
+                    const w = s.winner || determineSetWinner(s.homePoints, s.awayPoints, s.setNumber, setConfig);
+                    return (
+                      <button
+                        key={s.setNumber}
+                        type="button"
+                        onClick={() => setActiveSetNum(s.setNumber)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
+                          isCur
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-300 shadow-md'
+                            : 'bg-slate-900/80 text-slate-200 border-slate-600 hover:border-emerald-400'
+                        }`}
+                      >
+                        Set {s.setNumber}: {s.homePoints}-{s.awayPoints} {w ? '✓' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-11 gap-3 items-center">
+                {/* Home Set Point Controls */}
+                <div className="md:col-span-5 p-3.5 rounded-2xl bg-slate-900/90 border border-emerald-500/40 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-emerald-300 uppercase">Chủ Nhà • Set {activeSetNum}</div>
+                    <div className="text-xs sm:text-sm font-black text-white truncate">{homeTeam?.shortName || 'Đội Nhà'}</div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateSetPoints(activeSetNum, Math.max(0, curSet.homePoints - 1), curSet.awayPoints)}
+                      className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-sm border border-slate-600 active:scale-95 cursor-pointer"
+                    >
+                      -1
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      max={99}
+                      value={curSet.homePoints}
+                      onChange={(e) => handleUpdateSetPoints(activeSetNum, Number(e.target.value), curSet.awayPoints)}
+                      className="w-16 h-10 text-center font-mono font-black text-xl bg-[#030c18] text-white border-2 border-emerald-400 rounded-xl"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateSetPoints(activeSetNum, curSet.homePoints + 1, curSet.awayPoints)}
+                      className="px-3.5 h-10 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-xs sm:text-sm border border-emerald-300 shadow-lg active:scale-95 cursor-pointer"
+                    >
+                      +1 Điểm
+                    </button>
+                  </div>
+                </div>
+
+                {/* Middle Confirm Set / Match Winner */}
+                <div className="md:col-span-1 flex md:flex-col items-center justify-center gap-1.5 text-center">
+                  <span className="text-xs font-black text-slate-400">SET {activeSetNum}</span>
+                  <span className="text-[10px] font-mono text-cyan-300">
+                    /{activeSetNum >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet}đ
+                  </span>
+                </div>
+
+                {/* Away Set Point Controls */}
+                <div className="md:col-span-5 p-3.5 rounded-2xl bg-slate-900/90 border border-cyan-500/40 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-cyan-300 uppercase">Đội Khách • Set {activeSetNum}</div>
+                    <div className="text-xs sm:text-sm font-black text-white truncate">{awayTeam?.shortName || 'Đội Khách'}</div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateSetPoints(activeSetNum, curSet.homePoints, Math.max(0, curSet.awayPoints - 1))}
+                      className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-sm border border-slate-600 active:scale-95 cursor-pointer"
+                    >
+                      -1
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      max={99}
+                      value={curSet.awayPoints}
+                      onChange={(e) => handleUpdateSetPoints(activeSetNum, curSet.homePoints, Number(e.target.value))}
+                      className="w-16 h-10 text-center font-mono font-black text-xl bg-[#030c18] text-white border-2 border-cyan-400 rounded-xl"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateSetPoints(activeSetNum, curSet.homePoints, curSet.awayPoints + 1)}
+                      className="px-3.5 h-10 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-xs sm:text-sm border border-cyan-300 shadow-lg active:scale-95 cursor-pointer"
+                    >
+                      +1 Điểm
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <span className="text-[11px] text-slate-300">
+                  {curSetWinner
+                    ? `✓ Set ${activeSetNum} đã đủ điều kiện thắng cho ${curSetWinner === 'HOME' ? homeTeam?.shortName : awayTeam?.shortName} (${curSet.homePoints}-${curSet.awayPoints}).`
+                    : `Đang chấm điểm Set ${activeSetNum} (mục tiêu ${activeSetNum >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet}đ, cách biệt 2đ).`}
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!matchHasWinner && (
+                    <button
+                      type="button"
+                      onClick={handleConfirmSetAndAdvance}
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg active:scale-95 cursor-pointer"
+                    >
+                      {activeSetNum < setConfig.bestOf
+                        ? `Chốt Set ${activeSetNum} & Sang Set ${activeSetNum + 1}`
+                        : `Chốt Set ${activeSetNum}`}
+                    </button>
+                  )}
+                  {matchHasWinner && (
+                    <button
+                      type="button"
+                      onClick={handleFinishMatch}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg animate-pulse cursor-pointer"
+                    >
+                      🏆 Đã Đủ Set Thắng ({activeMatch.homeScore}-{activeMatch.awayScore}) — Hoàn Tất Trận Đấu
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Live Match Operational Control Bar for Organizer / Referee */}
         {canEdit && (
           <div className="relative z-10 px-5 sm:px-6 py-3.5 sm:py-4 bg-[#081525] border-t-2 border-sky-500/40 flex flex-wrap items-center justify-between gap-3 shadow-2xl">
@@ -880,7 +1305,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 </button>
               )}
 
-              {activeMatch.status === 'LIVE' && activeMatch.half === 1 && (
+              {!isSetSport && activeMatch.status === 'LIVE' && activeMatch.half === 1 && (
                 <button
                   onClick={handleSetHalftime}
                   className="flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-blue-600/30 border border-blue-300 ring-2 ring-blue-400/20 active:scale-95 transition-all cursor-pointer"
@@ -904,80 +1329,91 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
             {/* Quick Match Action Triggers */}
             {activeMatch.status !== 'FINISHED' && (
               <div className="flex flex-wrap items-center gap-2.5">
-                
-                {/* Goal Button */}
-                <button
-                  onClick={() => {
-                    setEventTeamId(homeTeam?.id || '');
-                    setGoalModalOpen(true);
-                  }}
-                  className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-emerald-500/35 border-2 border-emerald-300 active:scale-95 transition-all cursor-pointer ring-2 ring-emerald-400/25"
-                >
-                  <PlusCircle className="w-4 h-4 text-white" />
-                  <span>+ Bàn Thắng</span>
-                </button>
-
-                {/* Card Button */}
-                <button
-                  onClick={() => {
-                    setEventTeamId(homeTeam?.id || '');
-                    setCardModalOpen(true);
-                  }}
-                  className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl shadow-amber-500/35 border-2 border-amber-200 active:scale-95 transition-all cursor-pointer ring-2 ring-amber-400/25"
-                >
-                  <AlertTriangle className="w-4 h-4 text-slate-950" />
-                  <span>Phạt Thẻ</span>
-                </button>
-
-                {/* Substitution Button (Rule #6.2) */}
-                <button
-                  onClick={() => {
-                    setEventTeamId(homeTeam?.id || '');
-                    setSubModalOpen(true);
-                  }}
-                  className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-cyan-500/35 border-2 border-cyan-200 active:scale-95 transition-all cursor-pointer ring-2 ring-cyan-400/25"
-                >
-                  <ArrowRightLeft className="w-4 h-4 text-white" />
-                  <span>Thay Người</span>
-                </button>
-
-                {/* Knockout Penalty Shootout Button (chỉ hiện khi thể thức GROUP_KNOCKOUT) */}
-                {!isSingleLeague && activeMatch.round !== 'GROUP' && (
+                {isSetSport ? (
                   <button
-                    onClick={() => setPenaltyModalOpen(true)}
-                    className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-purple-600/35 border-2 border-purple-300 active:scale-95 transition-all cursor-pointer ring-2 ring-purple-400/25"
+                    onClick={handleOpenQuickSets}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-emerald-500/35 border-2 border-emerald-300 active:scale-95 transition-all cursor-pointer"
                   >
-                    <Award className="w-4 h-4 text-white" />
-                    <span>Luân Lưu 6m</span>
+                    <FileEdit className="w-4 h-4 text-white" />
+                    <span>Nhập Nhanh Tỷ Số Set</span>
                   </button>
+                ) : (
+                  <>
+                    {/* Goal Button */}
+                    <button
+                      onClick={() => {
+                        setEventTeamId(homeTeam?.id || '');
+                        setGoalModalOpen(true);
+                      }}
+                      className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-emerald-500/35 border-2 border-emerald-300 active:scale-95 transition-all cursor-pointer ring-2 ring-emerald-400/25"
+                    >
+                      <PlusCircle className="w-4 h-4 text-white" />
+                      <span>+ Bàn Thắng</span>
+                    </button>
+
+                    {/* Card Button */}
+                    <button
+                      onClick={() => {
+                        setEventTeamId(homeTeam?.id || '');
+                        setCardModalOpen(true);
+                      }}
+                      className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl shadow-amber-500/35 border-2 border-amber-200 active:scale-95 transition-all cursor-pointer ring-2 ring-amber-400/25"
+                    >
+                      <AlertTriangle className="w-4 h-4 text-slate-950" />
+                      <span>Phạt Thẻ</span>
+                    </button>
+
+                    {/* Substitution Button (Rule #6.2) */}
+                    <button
+                      onClick={() => {
+                        setEventTeamId(homeTeam?.id || '');
+                        setSubModalOpen(true);
+                      }}
+                      className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-cyan-500/35 border-2 border-cyan-200 active:scale-95 transition-all cursor-pointer ring-2 ring-cyan-400/25"
+                    >
+                      <ArrowRightLeft className="w-4 h-4 text-white" />
+                      <span>Thay Người</span>
+                    </button>
+
+                    {/* Knockout Penalty Shootout Button (chỉ hiện khi thể thức GROUP_KNOCKOUT) */}
+                    {!isSingleLeague && activeMatch.round !== 'GROUP' && (
+                      <button
+                        onClick={() => setPenaltyModalOpen(true)}
+                        className="flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-purple-600/35 border-2 border-purple-300 active:scale-95 transition-all cursor-pointer ring-2 ring-purple-400/25"
+                      >
+                        <Award className="w-4 h-4 text-white" />
+                        <span>Luân Lưu 6m</span>
+                      </button>
+                    )}
+
+                    {/* Chỉnh Thời Gian Thi Đấu Riêng Của Trận */}
+                    <button
+                      onClick={() => {
+                        setEditMatchDurationInput(matchDurationMinutes);
+                        setEditMatchBreakInput(breakDurationMinutes);
+                        setEditMatchCurrentMinInput(Math.floor(seconds / 60));
+                        setTimeConfigModalOpen(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-200 font-bold text-xs border border-cyan-500/50 active:scale-95 transition-all cursor-pointer"
+                      title="Chỉnh sửa thời lượng trận (phút) và phút đồng hồ hiện tại"
+                    >
+                      <Clock className="w-4 h-4 text-cyan-300" />
+                      <span>Sửa Thời Gian ({matchDurationMinutes}p)</span>
+                    </button>
+                  </>
                 )}
 
-                {/* Chỉnh Thời Gian Thi Đấu Riêng Của Trận */}
-                <button
-                  onClick={() => {
-                    setEditMatchDurationInput(matchDurationMinutes);
-                    setEditMatchBreakInput(breakDurationMinutes);
-                    setEditMatchCurrentMinInput(Math.floor(seconds / 60));
-                    setTimeConfigModalOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-200 font-bold text-xs border border-cyan-500/50 active:scale-95 transition-all cursor-pointer"
-                  title="Chỉnh sửa thời lượng trận (phút) và phút đồng hồ hiện tại"
-                >
-                  <Clock className="w-4 h-4 text-cyan-300" />
-                  <span>Sửa Thời Gian ({matchDurationMinutes}p)</span>
-                </button>
-
-                {/* Forfeit 0-3 Button (Trễ > 10p / Bỏ trận / Không đủ 3 cầu thủ) */}
+                {/* Forfeit Button */}
                 <button
                   onClick={() => {
                     setForfeitTeamId(homeTeam?.id || '');
                     setForfeitModalOpen(true);
                   }}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-950/90 hover:bg-rose-900 text-rose-200 font-bold text-xs border border-rose-500/60 active:scale-95 transition-all cursor-pointer"
-                  title="Xử thua 0-3 nếu đội đến trễ quá 10 phút hoặc bỏ cuộc"
+                  title="Xử thua nếu đội đến trễ quá 10 phút hoặc bỏ cuộc"
                 >
                   <Ban className="w-4 h-4 text-rose-400" />
-                  <span>Xử Thua 0–3</span>
+                  <span>Xử Thua 0–{isSetSport ? setsToWin : 3}</span>
                 </button>
 
               </div>
@@ -1000,8 +1436,8 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           <span className="text-xs text-slate-400">{activeMatch.events.length} sự kiện</span>
         </div>
 
-        {/* Quick squad suspension warning banner */}
-        {(homeTeam?.players.some((p) => p.isSuspended) || awayTeam?.players.some((p) => p.isSuspended)) && (
+        {/* Quick squad suspension warning banner (Football only) */}
+        {!isSetSport && (homeTeam?.players.some((p) => p.isSuspended) || awayTeam?.players.some((p) => p.isSuspended)) && (
           <div className="mb-4 p-2.5 rounded-lg bg-red-950/60 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
             <span>
@@ -1013,7 +1449,9 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         <div className="space-y-3 flex-1 overflow-y-auto max-h-96 pr-1">
           {activeMatch.events.length === 0 ? (
             <div className="text-center py-12 text-slate-500 text-xs">
-              Chưa có diễn biến nào. Nhấn &quot;+ Bàn Thắng&quot;, &quot;Phạt Thẻ&quot; hoặc &quot;Thay Người&quot; để cập nhật.
+              {isSetSport
+                ? 'Chưa có diễn biến nào. Dùng bảng chấm điểm Set hoặc "Nhập Nhanh Tỷ Số Set" để cập nhật.'
+                : 'Chưa có diễn biến nào. Nhấn "+ Bàn Thắng", "Phạt Thẻ" hoặc "Thay Người" để cập nhật.'}
             </div>
           ) : (
             activeMatch.events
@@ -1021,7 +1459,6 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
               .reverse()
               .map((ev) => {
                 const evTeam = teams.find((t) => t.id === ev.teamId);
-                const isHome = ev.teamId === homeTeam?.id;
 
                 return (
                   <div
@@ -1029,13 +1466,14 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                     className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 flex items-start gap-3 hover:border-slate-700 transition-colors"
                   >
                     <div className="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center font-mono font-bold text-xs text-emerald-400 border border-slate-700">
-                      {ev.minute}&apos;
+                      {ev.type === 'SET_WIN' ? `S${ev.setNumber || 1}` : `${ev.minute}'`}
                     </div>
 
                     <div className="flex-1 text-xs">
                       <div className="flex items-center justify-between font-bold text-white">
                         <span className="flex items-center gap-1.5">
                           {ev.type === 'GOAL' && '⚽ BÀN THẮNG!'}
+                          {ev.type === 'SET_WIN' && `${sportMeta.icon} CHỐT SET ${ev.setNumber || 1}${ev.setScoreLabel ? ` (${ev.setScoreLabel})` : ''}`}
                           {ev.type === 'CARD' &&
                             (ev.cardType === 'YELLOW'
                               ? '🟨 THẺ VÀNG'
@@ -1047,6 +1485,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                         </span>
                         <span className="text-[10px] text-slate-400">{evTeam?.shortName}</span>
                       </div>
+
+                      {ev.type === 'SET_WIN' && (
+                        <div className="text-emerald-300 mt-1 font-medium">{ev.reason}</div>
+                      )}
 
                       {ev.type === 'NOTE' && (
                         <div className="text-rose-300 mt-1 font-medium">{ev.reason}</div>
@@ -1557,19 +1999,21 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         </div>
       )}
 
-      {/* MODAL 6: Forfeit 0-3 (Trễ > 10 phút / Bỏ trận / Không đủ 3 cầu thủ) */}
+      {/* MODAL 6: Forfeit */}
       {forfeitModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-800">
             <h3 className="text-lg font-black text-rose-700 flex items-center gap-2">
-              <Ban className="w-5 h-5" /> Xử Thua 0–3 Theo Điều Lệ Giải
+              <Ban className="w-5 h-5" /> Xử Thua 0–{isSetSport ? setsToWin : 3} Theo Điều Lệ Giải
             </h3>
             <p className="text-xs text-slate-600 bg-rose-50 p-3 rounded-xl border border-rose-200">
-              Áp dụng khi đội bóng đến trễ quá <strong>10 phút</strong> so với giờ thi đấu quy định, bỏ cuộc giữa trận, hoặc không đủ tối thiểu <strong>03 cầu thủ</strong> trên sân. Đội còn lại được xử thắng <strong>3–0</strong>.
+              Áp dụng khi {sportMeta.unitLabel.toLowerCase()} đến trễ quá <strong>10 phút</strong> so với giờ thi đấu quy định, hoặc bỏ cuộc giữa trận. Đối thủ được xử thắng <strong>{isSetSport ? setsToWin : 3}–0</strong>.
             </p>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">Chọn Đội Bị Xử Thua (0 điểm, 0–3)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Chọn bên bị xử thua (0 điểm, 0–{isSetSport ? setsToWin : 3})
+              </label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -1602,7 +2046,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 {[
                   'Đến trễ quá 10 phút so với giờ thi đấu',
                   'Bỏ cuộc / không tiếp tục thi đấu',
-                  'Không đủ tối thiểu 03 cầu thủ trên sân',
+                  ...(isSetSport ? [] : ['Không đủ tối thiểu 03 cầu thủ trên sân']),
                 ].map((preset) => (
                   <button
                     key={preset}
@@ -1636,7 +2080,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 disabled={!forfeitTeamId}
                 className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-md"
               >
-                Xác Nhận Xử Thua 0–3
+                Xác Nhận Xử Thua 0–{isSetSport ? setsToWin : 3}
               </button>
             </div>
           </div>
@@ -1727,6 +2171,100 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white text-xs font-black shadow-md"
               >
                 Lưu Thời Gian Trận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 8: Quick Set Scores Entry (Badminton / Volleyball) */}
+      {quickSetsModalOpen && isSetSport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-800">
+            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <span>{sportMeta.icon}</span>
+              Nhập Nhanh Tỷ Số Các Set (BO{setConfig.bestOf})
+            </h3>
+            <p className="text-xs text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200">
+              Nhập điểm từng set cho <strong>{homeTeam?.shortName || 'Chủ nhà'}</strong> và <strong>{awayTeam?.shortName || 'Đội khách'}</strong>. Hệ thống tự cộng số set thắng và tính điểm xếp hạng {sportMeta.label}.
+            </p>
+
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-12 gap-2 text-[11px] font-bold text-slate-500 px-1">
+                <div className="col-span-3">Set</div>
+                <div className="col-span-4 text-center truncate">{homeTeam?.shortName || 'Chủ nhà'}</div>
+                <div className="col-span-1 text-center">-</div>
+                <div className="col-span-4 text-center truncate">{awayTeam?.shortName || 'Đội khách'}</div>
+              </div>
+
+              {quickSetsDraft.map((s, idx) => {
+                const targetPts = s.setNumber >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet;
+                return (
+                  <div key={s.setNumber} className="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                    <div className="col-span-3 text-xs font-bold text-slate-700">
+                      Set {s.setNumber}
+                      <span className="block text-[10px] text-slate-400 font-normal">({targetPts}đ)</span>
+                    </div>
+                    <div className="col-span-4">
+                      <input
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={s.homePoints}
+                        onChange={(e) => {
+                          const val = Math.max(0, Number(e.target.value) || 0);
+                          setQuickSetsDraft((prev) =>
+                            prev.map((item, i) => (i === idx ? { ...item, homePoints: val } : item))
+                          );
+                        }}
+                        className="w-full text-center font-mono font-black text-base bg-white border border-slate-300 rounded-lg p-1.5 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="col-span-1 text-center font-black text-slate-400">:</div>
+                    <div className="col-span-4">
+                      <input
+                        type="number"
+                        min={0}
+                        max={99}
+                        value={s.awayPoints}
+                        onChange={(e) => {
+                          const val = Math.max(0, Number(e.target.value) || 0);
+                          setQuickSetsDraft((prev) =>
+                            prev.map((item, i) => (i === idx ? { ...item, awayPoints: val } : item))
+                          );
+                        }}
+                        className="w-full text-center font-mono font-black text-base bg-white border border-slate-300 rounded-lg p-1.5 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={quickSetsFinishMatch}
+                onChange={(e) => setQuickSetsFinishMatch(e.target.checked)}
+                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span>Tự động đánh dấu Trận Đã Kết Thúc (FINISHED) nếu đã đủ {setsToWin} set thắng</span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setQuickSetsModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-bold"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickSets}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-xs font-black shadow-md"
+              >
+                Lưu Tỷ Số Các Set
               </button>
             </div>
           </div>

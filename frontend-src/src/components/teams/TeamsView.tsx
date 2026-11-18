@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Team, Player, UserRole, PlayerPosition, TeamStatus, Tournament, getGroupLetters, UserAccount } from '@/types';
+import { Team, Player, UserRole, PlayerPosition, TeamStatus, Tournament, getGroupLetters, UserAccount, getSportMeta } from '@/types';
 import { StorageService } from '@/services/storage';
 import { AuthService } from '@/services/auth';
 import { 
@@ -45,6 +45,9 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
   currentUser,
   onOpenAuthModal,
 }) => {
+  const sportType = tournament?.sportType || 'FOOTBALL';
+  const sportMeta = getSportMeta(sportType);
+  const maxPlayersLimit = tournament?.maxPlayersPerTeam || 12;
   const groups = getGroupLetters(tournament?.numberOfGroups || 4);
   const [selectedTeamId, setSelectedTeamId] = useState<string>(teams[0]?.id || '');
   const [filterGroup, setFilterGroup] = useState<string>('ALL');
@@ -85,7 +88,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
   const [newPlayerCohort, setNewPlayerCohort] = useState('K23');
   const [newPlayerDob, setNewPlayerDob] = useState('2004-05-15');
   const [newPlayerJersey, setNewPlayerJersey] = useState<number>(10);
-  const [newPlayerPos, setNewPlayerPos] = useState<PlayerPosition>('FW');
+  const [newPlayerPos, setNewPlayerPos] = useState<PlayerPosition>(sportMeta.defaultPosition);
 
   // Edit player modal state
   const [editPlayerModalOpen, setEditPlayerModalOpen] = useState(false);
@@ -96,7 +99,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
   const [editPlayerClass, setEditPlayerClass] = useState('');
   const [editPlayerDob, setEditPlayerDob] = useState('2004-05-15');
   const [editPlayerJersey, setEditPlayerJersey] = useState<number>(10);
-  const [editPlayerPos, setEditPlayerPos] = useState<PlayerPosition>('FW');
+  const [editPlayerPos, setEditPlayerPos] = useState<PlayerPosition>(sportMeta.defaultPosition);
 
   // Edit team modal state
   const [editTeamModalOpen, setEditTeamModalOpen] = useState(false);
@@ -128,6 +131,11 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
 
   // Quyền quản lý thành viên (Cầu thủ): BTC toàn quyền, Đội trưởng chỉ đội mình
   const canManageThisTeamPlayers = isOrganizerOrAdmin || isMyTeam;
+
+    // Đồng bộ vị trí mặc định theo môn thể thao khi chuyển giải đấu
+  useEffect(() => {
+    setNewPlayerPos(sportMeta.defaultPosition);
+  }, [sportType]);
 
   // Tự động định vị về đội bóng của Đội trưởng khi đăng nhập
   useEffect(() => {
@@ -260,7 +268,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
       id: newId,
       name: newTeamName.trim(),
       shortName: newTeamShortName.trim().toUpperCase(),
-      logo: `⚽ ${newTeamShortName.trim().toUpperCase()}`,
+      logo: `${sportMeta.icon} ${newTeamShortName.trim().toUpperCase()}`,
       class: newTeamClass.trim(),
       department: newTeamDept,
       leaderName: newTeamLeader.trim() || 'Trưởng đoàn',
@@ -504,15 +512,15 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
-              HỒ SƠ ĐỘI BÓNG &amp; CẦU THỦ
+              {sportMeta.icon} HỒ SƠ {sportMeta.unitLabel.toUpperCase()} &amp; {sportMeta.playerLabel.toUpperCase()}
             </span>
             <span className="text-xs text-slate-500 font-medium">Quy định Điều 14, 15 &amp; 16</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-            Danh Sách Đội &amp; Đăng Ký Cầu Thủ
+            Danh Sách {sportMeta.unitLabel} &amp; Đăng Ký {sportMeta.playerLabel}
           </h2>
           <p className="text-xs text-slate-600 mt-1">
-            Quy tắc: Tối đa {tournament?.maxTeams || 12} đội (tối đa 02 đội/Chi đoàn), {tournament?.maxPlayersPerTeam || 12} cầu thủ/đội, không trùng số áo (cố định suốt giải), 1 cầu thủ chỉ đá cho 1 đội.
+            Quy tắc: Tối đa {tournament?.maxTeams || 12} {sportMeta.unitShortLabel.toLowerCase()}, tối đa {maxPlayersLimit} {sportMeta.playerLabel.toLowerCase()}/đội, không trùng số áo, 1 {sportMeta.playerLabel.toLowerCase()} chỉ thi đấu cho 1 đội.
           </p>
         </div>
 
@@ -566,9 +574,9 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
       {teams.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center shadow-xs space-y-4">
           <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center mx-auto text-3xl">
-            ⚽
+            {sportMeta.icon}
           </div>
-          <h3 className="text-xl font-bold text-slate-900">Chưa Có Đội Bóng Nào Trong Cơ Sở Dữ Liệu</h3>
+          <h3 className="text-xl font-bold text-slate-900">Chưa Có {sportMeta.unitLabel} Nào Trong Cơ Sở Dữ Liệu</h3>
           <p className="text-xs text-slate-600 max-w-md mx-auto">
             {isOrganizerOrAdmin
               ? 'Dữ liệu giải đấu đang chờ tạo. Là Ban Tổ Chức, bạn có thể tạo trước các đội bóng tham gia và hệ thống sẽ tự động cấp tài khoản cho từng Đội trưởng.'
@@ -637,7 +645,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                     <div className="flex items-center justify-between text-[11px] text-slate-500">
                       <span>Lớp {t.class}</span>
                       <div className="flex items-center gap-2">
-                        <span>{t.players.length}/12 cầu thủ</span>
+                        <span>{t.players.length}/{maxPlayersLimit} {sportMeta.playerLabel.toLowerCase()}</span>
                         {isWithdrawn && (
                           <span className="text-[9px] bg-red-50 text-red-600 border border-red-200 px-1 rounded font-bold">
                             BỎ CUỘC
@@ -854,10 +862,14 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                         <span className="text-xl sm:text-2xl font-black text-blue-700 font-mono">
                           {selectedTeam.players.length}
                         </span>
-                        <span className="text-xs font-semibold text-slate-500 font-mono">/ 12 Cầu thủ</span>
+                        <span className="text-xs font-semibold text-slate-500 font-mono">/ {maxPlayersLimit} {sportMeta.playerLabel}</span>
                       </div>
                       <span className="text-[10px] font-medium text-slate-500 mt-1 block">
-                        {selectedTeam.players.length >= 5 ? '✓ Đủ tối thiểu 5 cầu thủ' : 'Cần tối thiểu 5 cầu thủ'}
+                        {sportType === 'BADMINTON'
+                          ? (selectedTeam.players.length >= 1 ? '✓ Đã có VĐV đăng ký' : 'Cần tối thiểu 1 VĐV')
+                          : sportType === 'VOLLEYBALL'
+                            ? (selectedTeam.players.length >= 6 ? '✓ Đủ tối thiểu 6 VĐV' : 'Cần tối thiểu 6 VĐV')
+                            : (selectedTeam.players.length >= 5 ? '✓ Đủ tối thiểu 5 cầu thủ' : 'Cần tối thiểu 5 cầu thủ')}
                       </span>
                     </div>
 
@@ -947,9 +959,9 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                       <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 shadow-2xs">
                         <span className="text-[11px] font-semibold text-slate-500 block mb-1">Chỉ Số Nhân Sự</span>
                         <span className="font-mono font-bold text-base text-slate-900 block">
-                          {selectedTeam.players.length} / 12 Cầu thủ
+                          {selectedTeam.players.length} / {maxPlayersLimit} {sportMeta.playerLabel}
                         </span>
-                        <span className="text-[10px] text-slate-500">Tối đa 12 người</span>
+                        <span className="text-[10px] text-slate-500">Tối đa {maxPlayersLimit} người</span>
                       </div>
                     </div>
                   )}
@@ -962,7 +974,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                   <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-blue-600" />
                     <h4 className="text-sm font-black text-slate-900">
-                      Danh Sách Đăng Ký Cầu Thủ ({selectedTeam.players.length}/12)
+                      Danh Sách Đăng Ký {sportMeta.playerLabel} ({selectedTeam.players.length}/{maxPlayersLimit})
                     </h4>
                   </div>
                   <span className="text-xs text-slate-500 font-medium">
@@ -987,8 +999,12 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                           <th className="py-3 px-3">MSSV</th>
                           <th className="py-3 px-2 text-center">VỊ TRÍ</th>
                           <th className="py-3 px-2 text-center">KHÓA</th>
-                          <th className="py-3 px-2 text-center">BÀN THẮNG</th>
-                          <th className="py-3 px-2 text-center">THẺ PHẠT</th>
+                          {sportType === 'FOOTBALL' && (
+                            <>
+                              <th className="py-3 px-2 text-center">BÀN THẮNG</th>
+                              <th className="py-3 px-2 text-center">THẺ PHẠT</th>
+                            </>
+                          )}
                           <th className="py-3 px-3 text-center">TRẠNG THÁI</th>
                           {canManageThisTeamPlayers && (
                             <th className="py-3 px-3 text-center w-24">THAO TÁC</th>
@@ -1011,14 +1027,18 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                               </span>
                             </td>
                             <td className="py-3 px-2 text-center text-slate-600">{p.cohort}</td>
-                            <td className="py-3 px-2 text-center font-mono font-bold text-blue-700">
-                              {p.goals > 0 ? `⚽ ${p.goals}` : '-'}
-                            </td>
-                            <td className="py-3 px-2 text-center font-mono">
-                              {p.yellowCards > 0 && <span className="text-amber-500 mr-1">{p.yellowCards}🟨</span>}
-                              {p.redCards > 0 && <span className="text-red-500">{p.redCards}🟥</span>}
-                              {p.yellowCards === 0 && p.redCards === 0 && <span className="text-slate-400">-</span>}
-                            </td>
+                            {sportType === 'FOOTBALL' && (
+                              <>
+                                <td className="py-3 px-2 text-center font-mono font-bold text-blue-700">
+                                  {p.goals > 0 ? `⚽ ${p.goals}` : '-'}
+                                </td>
+                                <td className="py-3 px-2 text-center font-mono">
+                                  {p.yellowCards > 0 && <span className="text-amber-500 mr-1">{p.yellowCards}🟨</span>}
+                                  {p.redCards > 0 && <span className="text-red-500">{p.redCards}🟥</span>}
+                                  {p.yellowCards === 0 && p.redCards === 0 && <span className="text-slate-400">-</span>}
+                                </td>
+                              </>
+                            )}
                             <td className="py-3 px-3 text-center">
                               {p.isSuspended ? (
                                 <span 
@@ -1323,7 +1343,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-600" />
-                Đăng Ký Cầu Thủ Mới (Điều 15)
+                Đăng Ký {sportMeta.playerLabel} Mới (Điều 15)
               </h3>
               <button
                 onClick={() => setPlayerModalOpen(false)}
@@ -1385,16 +1405,17 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Vị trí thi đấu</label>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">Vị trí / Nội dung thi đấu</label>
                 <select
                   value={newPlayerPos}
                   onChange={(e) => setNewPlayerPos(e.target.value as PlayerPosition)}
                   className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:border-blue-500 focus:bg-white focus:outline-none"
                 >
-                  <option value="GK">Thủ Môn (GK)</option>
-                  <option value="DF">Hậu Vệ (DF)</option>
-                  <option value="MF">Tiền Vệ (MF)</option>
-                  <option value="FW">Tiền Đạo (FW)</option>
+                  {sportMeta.positions.map((pos) => (
+                    <option key={pos.value} value={pos.value}>
+                      {pos.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -1629,16 +1650,17 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Vị trí thi đấu</label>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">Vị trí / Nội dung thi đấu</label>
                 <select
                   value={editPlayerPos}
                   onChange={(e) => setEditPlayerPos(e.target.value as PlayerPosition)}
                   className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:border-blue-500 focus:bg-white focus:outline-none"
                 >
-                  <option value="GK">Thủ Môn (GK)</option>
-                  <option value="DF">Hậu Vệ (DF)</option>
-                  <option value="MF">Tiền Vệ (MF)</option>
-                  <option value="FW">Tiền Đạo (FW)</option>
+                  {sportMeta.positions.map((pos) => (
+                    <option key={pos.value} value={pos.value}>
+                      {pos.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

@@ -9,8 +9,25 @@
 //   4. Thẻ đỏ, thẻ vàng (mỗi thẻ đỏ trực tiếp tính bằng 02 thẻ vàng) - đội nào bị ít thẻ hơn sẽ xếp trên
 //   5. Bốc thăm (⚠️ CẦN BỐC THĂM / BTC XÁC NHẬN)
 
-import { Team, Match, GroupStanding } from '@/types';
+import { Team, Match, GroupStanding, SportType } from '@/types';
 import { StorageService } from './storage';
+
+function awardMatchPoints(homeScore: number, awayScore: number, sportType: SportType): [number, number] {
+  if (sportType === 'VOLLEYBALL') {
+    if (homeScore === awayScore) return [0, 0];
+    const isDecidingSet = Math.abs(homeScore - awayScore) === 1 && homeScore + awayScore >= 3;
+    if (homeScore > awayScore) return isDecidingSet ? [2, 1] : [3, 0];
+    return isDecidingSet ? [1, 2] : [0, 3];
+  }
+  if (sportType === 'BADMINTON') {
+    if (homeScore > awayScore) return [3, 0];
+    if (awayScore > homeScore) return [0, 3];
+    return [0, 0];
+  }
+  if (homeScore > awayScore) return [3, 0];
+  if (awayScore > homeScore) return [0, 3];
+  return [1, 1];
+}
 
 function partitionByMetric(
   items: GroupStanding[],
@@ -41,31 +58,39 @@ export class RankingEngine {
   /**
    * Computes the general standings table across all teams (SINGLE_LEAGUE format).
    */
-  static calculateLeagueStandings(teams: Team[], matches: Match[]): GroupStanding[] {
+  static calculateLeagueStandings(teams: Team[], matches: Match[], sportType?: SportType): GroupStanding[] {
+    const resolvedSport = sportType || StorageService.getTournament()?.sportType || 'FOOTBALL';
     const leagueMatches = matches.filter(
       (m) => (m.round === 'GROUP' || !m.round) && (m.status === 'FINISHED' || m.status === 'LIVE')
     );
-    return this.computeStandingsFromScope('LEAGUE', teams, leagueMatches);
+    return this.computeStandingsFromScope('LEAGUE', teams, leagueMatches, resolvedSport);
   }
 
   /**
    * Computes the standings table for a specific group or delegates to general league table.
    */
-  static calculateGroupStandings(group: string, teams: Team[], matches: Match[]): GroupStanding[] {
+  static calculateGroupStandings(
+    group: string,
+    teams: Team[],
+    matches: Match[],
+    sportType?: SportType
+  ): GroupStanding[] {
+    const resolvedSport = sportType || StorageService.getTournament()?.sportType || 'FOOTBALL';
     if (group === 'LEAGUE' || group === 'ALL_LEAGUE') {
-      return this.calculateLeagueStandings(teams, matches);
+      return this.calculateLeagueStandings(teams, matches, resolvedSport);
     }
     const groupTeams = teams.filter((t) => t.group === group);
     const groupMatches = matches.filter(
       (m) => m.group === group && (m.status === 'FINISHED' || m.status === 'LIVE')
     );
-    return this.computeStandingsFromScope(group, groupTeams, groupMatches);
+    return this.computeStandingsFromScope(group, groupTeams, groupMatches, resolvedSport);
   }
 
   private static computeStandingsFromScope(
     scopeKey: string,
     scopeTeams: Team[],
-    scopeMatches: Match[]
+    scopeMatches: Match[],
+    sportType: SportType = 'FOOTBALL'
   ): GroupStanding[] {
     // Initialize standings map
     const map = new Map<string, GroupStanding>();
@@ -86,6 +111,12 @@ export class RankingEngine {
         yellowCards: 0,
         redCards: 0,
         cardPoints: 0,
+        setsWon: 0,
+        setsLost: 0,
+        setDifference: 0,
+        pointsFor: 0,
+        pointsAgainst: 0,
+        pointsDifference: 0,
         rank: 1,
         isWithdrawn: t.status === 'WITHDRAWN' || t.status === 'DISQUALIFIED',
       });
@@ -101,7 +132,7 @@ export class RankingEngine {
       (m) => !withdrawnIds.has(m.homeTeamId) && !withdrawnIds.has(m.awayTeamId)
     );
 
-    // Apply match results and card statistics for matches between active (non-withdrawn) teams
+    // Apply match results and stats for matches between active (non-withdrawn) teams
     activeGroupMatches.forEach((m) => {
       const home = map.get(m.homeTeamId);
       const away = map.get(m.awayTeamId);
@@ -115,39 +146,55 @@ export class RankingEngine {
       away.goalsFor += m.awayScore;
       away.goalsAgainst += m.homeScore;
 
+      if (Array.isArray(m.sets)) {
+        m.sets.forEach((s) => {
+          const hp = Number(s.homePoints) || 0;
+          const ap = Number(s.awayPoints) || 0;
+          home.pointsFor = (home.pointsFor || 0) + hp;
+          home.pointsAgainst = (home.pointsAgainst || 0) + ap;
+          away.pointsFor = (away.pointsFor || 0) + ap;
+          away.pointsAgainst = (away.pointsAgainst || 0) + hp;
+        });
+      }
+
+      const [homePts, awayPts] = awardMatchPoints(m.homeScore, m.awayScore, sportType);
+      home.points += homePts;
+      away.points += awayPts;
+
       if (m.homeScore > m.awayScore) {
         home.won += 1;
-        home.points += 3;
         away.lost += 1;
       } else if (m.homeScore < m.awayScore) {
         away.won += 1;
-        away.points += 3;
         home.lost += 1;
-      } else {
+      } else if (sportType === 'FOOTBALL') {
         home.drawn += 1;
-        home.points += 1;
         away.drawn += 1;
-        away.points += 1;
       }
 
-      // Thống kê thẻ phạt (mỗi thẻ đỏ trực tiếp tính bằng 02 thẻ vàng)
-      (m.events || []).forEach((ev) => {
-        if (ev.type !== 'CARD') return;
-        const target = map.get(ev.teamId);
-        if (!target || withdrawnIds.has(ev.teamId)) return;
+      if (sportType === 'FOOTBALL') {
+        // Thống kê thẻ phạt (mỗi thẻ đỏ trực tiếp tính bằng 02 thẻ vàng)
+        (m.events || []).forEach((ev) => {
+          if (ev.type !== 'CARD') return;
+          const target = map.get(ev.teamId);
+          if (!target || withdrawnIds.has(ev.teamId)) return;
 
-        if (ev.cardType === 'RED') {
-          target.redCards += 1;
-          target.cardPoints += 2;
-        } else if (ev.cardType === 'YELLOW' || ev.cardType === 'SECOND_YELLOW') {
-          target.yellowCards += 1;
-          target.cardPoints += 1;
-        }
-      });
+          if (ev.cardType === 'RED') {
+            target.redCards += 1;
+            target.cardPoints += 2;
+          } else if (ev.cardType === 'YELLOW' || ev.cardType === 'SECOND_YELLOW') {
+            target.yellowCards += 1;
+            target.cardPoints += 1;
+          }
+        });
+      }
     });
 
-    // Các đội còn lại được cộng 3 điểm (xử thắng 3-0) khi có đội bỏ cuộc, không cộng trùng lặp
+    // Các đội còn lại được cộng 3 điểm (xử thắng) khi có đội bỏ cuộc, không cộng trùng lặp
     if (withdrawnTeams.length > 0) {
+      const activeTour = StorageService.getTournament();
+      const winSetCount =
+        sportType === 'FOOTBALL' ? 3 : activeTour?.setConfig?.bestOf === 5 ? 3 : 2;
       withdrawnTeams.forEach((wTeam) => {
         const wEntry = map.get(wTeam.id);
         scopeTeams.forEach((t) => {
@@ -157,21 +204,25 @@ export class RankingEngine {
               entry.played += 1;
               entry.won += 1;
               entry.points += 3;
-              entry.goalsFor += 3;
+              entry.goalsFor += winSetCount;
             }
             if (wEntry) {
               wEntry.played += 1;
               wEntry.lost += 1;
-              wEntry.goalsAgainst += 3;
+              wEntry.goalsAgainst += winSetCount;
             }
           }
         });
       });
     }
 
-    // Calculate goal difference
+    // Calculate set/goal difference and point difference
     map.forEach((item) => {
       item.goalDifference = item.goalsFor - item.goalsAgainst;
+      item.setsWon = item.goalsFor;
+      item.setsLost = item.goalsAgainst;
+      item.setDifference = item.goalDifference;
+      item.pointsDifference = (item.pointsFor || 0) - (item.pointsAgainst || 0);
     });
 
     // Load any manual BTC draw / tie-break decisions
@@ -185,12 +236,10 @@ export class RankingEngine {
     };
 
     /**
-     * Xử lý phân hạng cho nhóm từ 2 đội trở lên bằng điểm theo đúng điều lệ giải:
-     * 1. Kết quả đối đầu giữa các đội bằng điểm (Điểm đối đầu -> Hiệu số đối đầu -> Bàn thắng đối đầu)
-     * 2. Hiệu số (tổng bàn thắng - tổng bàn thua toàn bảng)
-     * 3. Tổng bàn thắng toàn bảng
-     * 4. Thẻ đỏ, thẻ vàng (mỗi thẻ đỏ trực tiếp = 02 thẻ vàng, ít thẻ hơn xếp trên)
-     * 5. Bốc thăm
+     * Xử lý phân hạng cho nhóm từ 2 đội trở lên bằng điểm theo đúng môn thể thao:
+     * - FOOTBALL: Đối đầu -> Hiệu số -> Tổng bàn thắng -> Thẻ phạt -> Bốc thăm
+     * - BADMINTON: Đối đầu (Điểm -> Hiệu số ván -> Hiệu số điểm cầu) -> Hiệu số ván -> Hiệu số điểm cầu -> Tổng điểm cầu -> Bốc thăm
+     * - VOLLEYBALL: Số trận thắng -> Hiệu số set -> Hiệu số điểm quả -> Tổng điểm quả -> Đối đầu -> Bốc thăm
      */
     const resolveTiedGroup = (tied: GroupStanding[]): GroupStanding[] => {
       if (tied.length <= 1) return tied;
@@ -211,10 +260,14 @@ export class RankingEngine {
       const expectedPairs = (tied.length * (tied.length - 1)) / 2;
       const allH2HPlayed = expectedPairs > 0 && playedPairs.size >= expectedPairs;
 
-      // 1. Xét chỉ số của các trận đấu giữa các đội bằng điểm với nhau
-      if (allH2HPlayed) {
-        const h2hStats = new Map<string, { pts: number; gf: number; ga: number; gd: number }>();
-        tied.forEach((t) => h2hStats.set(t.teamId, { pts: 0, gf: 0, ga: 0, gd: 0 }));
+      const computeH2HStats = () => {
+        const h2hStats = new Map<
+          string,
+          { pts: number; gf: number; ga: number; gd: number; pf: number; pa: number; pd: number }
+        >();
+        tied.forEach((t) =>
+          h2hStats.set(t.teamId, { pts: 0, gf: 0, ga: 0, gd: 0, pf: 0, pa: 0, pd: 0 })
+        );
 
         h2hMatches.forEach((m) => {
           const home = h2hStats.get(m.homeTeamId);
@@ -226,55 +279,96 @@ export class RankingEngine {
           away.gf += m.awayScore;
           away.ga += m.homeScore;
 
-          if (m.homeScore > m.awayScore) {
-            home.pts += 3;
-          } else if (m.homeScore < m.awayScore) {
-            away.pts += 3;
-          } else {
-            home.pts += 1;
-            away.pts += 1;
+          if (Array.isArray(m.sets)) {
+            m.sets.forEach((s) => {
+              const hp = Number(s.homePoints) || 0;
+              const ap = Number(s.awayPoints) || 0;
+              home.pf += hp;
+              home.pa += ap;
+              away.pf += ap;
+              away.pa += hp;
+            });
           }
+
+          const [hPts, aPts] = awardMatchPoints(m.homeScore, m.awayScore, sportType);
+          home.pts += hPts;
+          away.pts += aPts;
         });
 
         h2hStats.forEach((st) => {
           st.gd = st.gf - st.ga;
+          st.pd = st.pf - st.pa;
         });
+        return h2hStats;
+      };
 
-        // 1a. Kết quả đối đầu (Điểm đối đầu)
-        const byH2HPts = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.pts || 0, false);
-        if (byH2HPts.length > 1) {
-          return byH2HPts.flatMap((b) => resolveTiedGroup(b));
+      if (sportType === 'VOLLEYBALL') {
+        const byWon = partitionByMetric(tied, (t) => t.won, false);
+        if (byWon.length > 1) return byWon.flatMap((b) => resolveTiedGroup(b));
+
+        const bySetDiff = partitionByMetric(tied, (t) => t.goalDifference, false);
+        if (bySetDiff.length > 1) return bySetDiff.flatMap((b) => resolveTiedGroup(b));
+
+        const byPtsDiff = partitionByMetric(tied, (t) => t.pointsDifference || 0, false);
+        if (byPtsDiff.length > 1) return byPtsDiff.flatMap((b) => resolveTiedGroup(b));
+
+        const byPtsFor = partitionByMetric(tied, (t) => t.pointsFor || 0, false);
+        if (byPtsFor.length > 1) return byPtsFor.flatMap((b) => resolveTiedGroup(b));
+
+        if (allH2HPlayed) {
+          const h2hStats = computeH2HStats();
+          const byH2HPts = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.pts || 0, false);
+          if (byH2HPts.length > 1) return byH2HPts.flatMap((b) => resolveTiedGroup(b));
+
+          const byH2HGd = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.gd || 0, false);
+          if (byH2HGd.length > 1) return byH2HGd.flatMap((b) => resolveTiedGroup(b));
+
+          const byH2HPd = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.pd || 0, false);
+          if (byH2HPd.length > 1) return byH2HPd.flatMap((b) => resolveTiedGroup(b));
+        }
+      } else if (sportType === 'BADMINTON') {
+        if (allH2HPlayed) {
+          const h2hStats = computeH2HStats();
+          const byH2HPts = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.pts || 0, false);
+          if (byH2HPts.length > 1) return byH2HPts.flatMap((b) => resolveTiedGroup(b));
+
+          const byH2HGd = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.gd || 0, false);
+          if (byH2HGd.length > 1) return byH2HGd.flatMap((b) => resolveTiedGroup(b));
+
+          const byH2HPd = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.pd || 0, false);
+          if (byH2HPd.length > 1) return byH2HPd.flatMap((b) => resolveTiedGroup(b));
         }
 
-        // 1b. Hiệu số đối đầu giữa các đội bằng điểm
-        const byH2HGd = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.gd || 0, false);
-        if (byH2HGd.length > 1) {
-          return byH2HGd.flatMap((b) => resolveTiedGroup(b));
+        const bySetDiff = partitionByMetric(tied, (t) => t.goalDifference, false);
+        if (bySetDiff.length > 1) return bySetDiff.flatMap((b) => resolveTiedGroup(b));
+
+        const byPtsDiff = partitionByMetric(tied, (t) => t.pointsDifference || 0, false);
+        if (byPtsDiff.length > 1) return byPtsDiff.flatMap((b) => resolveTiedGroup(b));
+
+        const byPtsFor = partitionByMetric(tied, (t) => t.pointsFor || 0, false);
+        if (byPtsFor.length > 1) return byPtsFor.flatMap((b) => resolveTiedGroup(b));
+      } else {
+        // FOOTBALL
+        if (allH2HPlayed) {
+          const h2hStats = computeH2HStats();
+          const byH2HPts = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.pts || 0, false);
+          if (byH2HPts.length > 1) return byH2HPts.flatMap((b) => resolveTiedGroup(b));
+
+          const byH2HGd = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.gd || 0, false);
+          if (byH2HGd.length > 1) return byH2HGd.flatMap((b) => resolveTiedGroup(b));
+
+          const byH2HGf = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.gf || 0, false);
+          if (byH2HGf.length > 1) return byH2HGf.flatMap((b) => resolveTiedGroup(b));
         }
 
-        // 1c. Tổng bàn thắng đối đầu giữa các đội bằng điểm
-        const byH2HGf = partitionByMetric(tied, (t) => h2hStats.get(t.teamId)?.gf || 0, false);
-        if (byH2HGf.length > 1) {
-          return byH2HGf.flatMap((b) => resolveTiedGroup(b));
-        }
-      }
+        const byOverallGd = partitionByMetric(tied, (t) => t.goalDifference, false);
+        if (byOverallGd.length > 1) return byOverallGd.flatMap((b) => resolveTiedGroup(b));
 
-      // 2. Hiệu số toàn bảng (tổng bàn thắng - tổng bàn thua)
-      const byOverallGd = partitionByMetric(tied, (t) => t.goalDifference, false);
-      if (byOverallGd.length > 1) {
-        return byOverallGd.flatMap((b) => resolveTiedGroup(b));
-      }
+        const byOverallGf = partitionByMetric(tied, (t) => t.goalsFor, false);
+        if (byOverallGf.length > 1) return byOverallGf.flatMap((b) => resolveTiedGroup(b));
 
-      // 3. Tổng bàn thắng toàn bảng
-      const byOverallGf = partitionByMetric(tied, (t) => t.goalsFor, false);
-      if (byOverallGf.length > 1) {
-        return byOverallGf.flatMap((b) => resolveTiedGroup(b));
-      }
-
-      // 4. Thẻ đỏ, thẻ vàng (mỗi thẻ đỏ trực tiếp = 02 thẻ vàng, ít thẻ hơn xếp trên)
-      const byCards = partitionByMetric(tied, (t) => t.cardPoints, true);
-      if (byCards.length > 1) {
-        return byCards.flatMap((b) => resolveTiedGroup(b));
+        const byCards = partitionByMetric(tied, (t) => t.cardPoints, true);
+        if (byCards.length > 1) return byCards.flatMap((b) => resolveTiedGroup(b));
       }
 
       // 5. Bốc thăm (BTC thực hiện bốc thăm khi tất cả chỉ số trên đều bằng nhau)
