@@ -1,4 +1,4 @@
-# ITFTMS 2026 — Hệ Thống Quản Lý Hội Thao Khoa CNTT 2026
+# ITFTMS 2026 — Hệ Thống Quản Lý Hội Thao
 
 Hệ thống quản lý, điều hành và cổng thông tin trực tiếp cho Hội thao Khoa Công nghệ Thông tin (**ITFTMS 2026**), hỗ trợ đa môn thi đấu (Bóng đá, Cầu lông, Bóng chuyền) và tối ưu triển khai trên Shared Hosting / DirectAdmin (Next.js Static Export + PHP + MySQL/MariaDB).
 
@@ -50,41 +50,5 @@ web_hoithao/
 │   └── _next/             # Static assets sau khi build Next.js
 └── sql/
     └── database.sql       # Script khởi tạo cơ sở dữ liệu MySQL/MariaDB
-```
 
----
 
-## Hướng dẫn cài đặt & chạy
-
-### 1. Phát triển Frontend (Local)
-
-```bash
-cd frontend-src
-npm install
-npm run dev
-```
-
-Mở trình duyệt tại `http://localhost:3000`.
-
-### 2. Build Static Export cho Hosting
-
-```bash
-cd frontend-src
-npm run build
-```
-
-Kết quả build tĩnh được xuất ra thư mục `frontend-src/out/`, sau đó sao chép vào `public_html/` để triển khai cùng thư mục `public_html/api/`.
-
-### 3. Triển khai trên DirectAdmin / Shared Hosting
-
-1. Tạo cơ sở dữ liệu MySQL/MariaDB và import file [`sql/database.sql`](sql/database.sql).
-2. Mở file [`public_html/api/config.php`](public_html/api/config.php) và điền thông tin kết nối database:
-   ```php
-   define('DB_HOST', 'localhost');
-   define('DB_PORT', '3306');
-   define('DB_NAME', 'TEN_DATABASE_MYSQL_CUA_BAN');
-   define('DB_USER', 'TEN_USER_MYSQL_CUA_BAN');
-   define('DB_PASS', 'MAT_KHAU_MYSQL_CUA_BAN');
-   ```
-3. Tải toàn bộ nội dung trong `public_html/` lên thư mục `public_html` của hosting.
-4. Kiểm tra trạng thái API qua đường dẫn `/api/health.php`.
