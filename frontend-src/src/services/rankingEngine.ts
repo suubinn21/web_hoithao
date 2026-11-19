@@ -705,6 +705,37 @@ export class RankingEngine {
       .filter((x) => x.goals > 0)
       .sort((a, b) => (b.goals !== a.goals ? b.goals - a.goals : b.assists - a.assists));
   }
+
+  /**
+   * Recomputes every player's goals and assists strictly from match events
+   * so post-match edits or deleted events keep player stats and Top Scorers exact.
+   */
+  static recalculatePlayerStatsFromMatches(teams: Team[], matches: Match[]): Team[] {
+    const goalsMap = new Map<string, number>();
+    const assistsMap = new Map<string, number>();
+
+    (matches || []).forEach((m) => {
+      (m.events || []).forEach((ev) => {
+        if (ev.type === 'GOAL') {
+          if (!ev.isOwnGoal && ev.playerId) {
+            goalsMap.set(ev.playerId, (goalsMap.get(ev.playerId) || 0) + 1);
+          }
+          if (ev.assistPlayerId) {
+            assistsMap.set(ev.assistPlayerId, (assistsMap.get(ev.assistPlayerId) || 0) + 1);
+          }
+        }
+      });
+    });
+
+    return (teams || []).map((team) => ({
+      ...team,
+      players: (team.players || []).map((p) => ({
+        ...p,
+        goals: goalsMap.get(p.id) || 0,
+        assists: assistsMap.get(p.id) || 0,
+      })),
+    }));
+  }
 }
 
 export interface KnockoutPlayerScorer {

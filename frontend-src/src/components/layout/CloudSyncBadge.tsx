@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Cloud, RefreshCw, AlertTriangle, WifiOff } from 'lucide-react';
+import { RefreshCw, AlertTriangle, WifiOff } from 'lucide-react';
 import type { CloudSyncSnapshot } from '@/services/dbSync';
 
 export interface CloudSyncBadgeProps {
@@ -85,35 +85,7 @@ export const CloudSyncBadge: React.FC<CloudSyncBadgeProps> = ({
     );
   }
 
-  const isConnecting = cloudStatus === 'connecting';
-
-  return (
-    <div
-      className={`${baseSizeClass} items-center border font-semibold shadow-xs transition-all shrink-0 whitespace-nowrap ${isConnecting
-          ? 'bg-amber-50 border-amber-200 text-amber-700'
-          : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-        }`}
-      title={
-        isConnecting
-          ? 'Đang kết nối đến CSDL ...'
-          : 'Dữ liệu đang kết nối và đồng bộ trực tiếp với CSDL'
-      }
-    >
-      <span className="relative flex h-2 w-2 shrink-0">
-        {!isConnecting && (
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-        )}
-        <span
-          className={`relative inline-flex rounded-full h-2 w-2 ${isConnecting ? 'bg-amber-500' : 'bg-emerald-500'
-            }`}
-        ></span>
-      </span>
-      {!isCompact && <Cloud className="w-3.5 h-3.5 shrink-0" />}
-      <span className="font-mono font-bold text-[10px] sm:text-[11px] whitespace-nowrap">
-        {isConnecting ? 'Kết nối...' : 'MySQL Sync'}
-      </span>
-    </div>
-  );
+  return null;
 };
 
 interface OfflineSyncBannerProps {

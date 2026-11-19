@@ -22,11 +22,17 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
   tournament,
   onRefresh,
 }) => {
-  const isSingleLeague = (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE';
+  const formatType = tournament?.formatType || 'SINGLE_LEAGUE';
+  const isSingleLeague = formatType === 'SINGLE_LEAGUE';
+  const isDirectKnockout = formatType === 'KNOCKOUT';
   const sportType = tournament?.sportType || 'FOOTBALL';
   const sportMeta = getSportMeta(sportType);
   const isSetSport = sportType === 'BADMINTON' || sportType === 'VOLLEYBALL';
-  const groups = isSingleLeague ? ['LEAGUE'] : getGroupLetters(tournament?.numberOfGroups || 4);
+  const groups = isSingleLeague
+    ? ['LEAGUE']
+    : isDirectKnockout
+      ? []
+      : getGroupLetters(tournament?.numberOfGroups || 4);
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
 
   // Tie break (Bốc thăm) modal state
@@ -90,9 +96,154 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
 
   const nextStageLabel = isSingleLeague
     ? 'Top 3 nhận Huy chương Nhất – Nhì – Ba'
-    : (tournament?.numberOfGroups || 4) === 2
-      ? 'Vào Bán kết'
-      : 'Vào Tứ kết';
+    : isDirectKnockout
+      ? tournament?.scheduleConfig?.hasThirdPlace === false
+        ? 'Vô Địch • Á Quân • Đồng Hạng Ba'
+        : 'Vô Địch • Á Quân • Hạng Ba'
+      : (tournament?.numberOfGroups || 4) === 2
+        ? 'Vào Bán kết'
+        : 'Vào Tứ kết';
+
+  const directKnockoutSummary = (() => {
+    if (!isDirectKnockout) return null;
+
+    const ROUND_META: Record<string, { weight: number; label: string }> = {
+      ROUND_OF_64: { weight: 1, label: 'Vòng 1/32' },
+      ROUND_OF_32: { weight: 2, label: 'Vòng 1/16' },
+      ROUND_OF_16: { weight: 3, label: 'Vòng 1/8' },
+      QUARTER_FINAL: { weight: 4, label: 'Tứ Kết' },
+      SEMI_FINAL: { weight: 5, label: 'Bán Kết' },
+      THIRD_PLACE: { weight: 6, label: 'Tranh Hạng 3' },
+      FINAL: { weight: 7, label: 'Chung Kết' },
+    };
+
+    const koMatches = matches.filter((m) => m.round !== 'GROUP');
+    type MatchItem = (typeof matches)[number];
+    const resolveWinner = (m?: MatchItem): string => {
+      if (!m || m.status !== 'FINISHED') return '';
+      if (m.winnerTeamId) return m.winnerTeamId;
+      if (m.homeScore > m.awayScore) return m.homeTeamId;
+      if (m.awayScore > m.homeScore) return m.awayTeamId;
+      return '';
+    };
+    const resolveLoser = (m?: MatchItem): string => {
+      if (!m) return '';
+      const w = resolveWinner(m);
+      if (!w) return '';
+      return w === m.homeTeamId ? m.awayTeamId : m.homeTeamId;
+    };
+
+    const finalMatch = koMatches.find((m) => m.round === 'FINAL');
+    const thirdMatch = koMatches.find((m) => m.round === 'THIRD_PLACE');
+    const championId = resolveWinner(finalMatch);
+    const runnerUpId = resolveLoser(finalMatch);
+    const thirdId = resolveWinner(thirdMatch);
+    const fourthId = resolveLoser(thirdMatch);
+    const noThirdMatch = tournament?.scheduleConfig?.hasThirdPlace === false;
+
+    const teamMap = new Map(teams.map((t) => [t.id, t]));
+
+    const rows = teams.map((team, seedIdx) => {
+      const teamMatches = koMatches.filter(
+        (m) => m.homeTeamId === team.id || m.awayTeamId === team.id
+      );
+      let played = 0;
+      let wins = 0;
+      let losses = 0;
+      let scored = 0;
+      let conceded = 0;
+      let highestWeight = 0;
+      let highestLabel = 'Chờ lịch';
+      let eliminatedWeight = 0;
+      let hasPendingMatch = false;
+
+      teamMatches.forEach((m) => {
+        const meta = ROUND_META[m.round] || { weight: 1, label: m.roundLabel || 'Vòng loại' };
+        if (meta.weight > highestWeight) {
+          highestWeight = meta.weight;
+          highestLabel = meta.label;
+        }
+        if (m.status === 'FINISHED') {
+          played += 1;
+          const isHome = m.homeTeamId === team.id;
+          scored += isHome ? m.homeScore : m.awayScore;
+          conceded += isHome ? m.awayScore : m.homeScore;
+          const w = resolveWinner(m);
+          if (w === team.id) {
+            wins += 1;
+          } else if (w) {
+            losses += 1;
+            if (meta.weight > eliminatedWeight) eliminatedWeight = meta.weight;
+          }
+        } else {
+          hasPendingMatch = true;
+        }
+      });
+
+      let placementScore = highestWeight * 10 + (hasPendingMatch ? 5 : 0);
+      let statusLabel =
+        teamMatches.length === 0
+          ? 'Chờ bốc thăm / Tạo lịch'
+          : hasPendingMatch
+            ? `Đang thi đấu (${highestLabel})`
+            : `Dừng bước ở ${highestLabel}`;
+      let medalRank: 1 | 2 | 3 | 4 | null = null;
+
+      if (championId === team.id) {
+        placementScore = 1000;
+        statusLabel = '🏆 Vô Địch';
+        medalRank = 1;
+      } else if (runnerUpId === team.id) {
+        placementScore = 900;
+        statusLabel = '🥈 Á Quân';
+        medalRank = 2;
+      } else if (thirdId === team.id) {
+        placementScore = 800;
+        statusLabel = '🥉 Hạng Ba';
+        medalRank = 3;
+      } else if (noThirdMatch && eliminatedWeight === 5) {
+        placementScore = 800;
+        statusLabel = '🥉 Đồng Hạng Ba';
+        medalRank = 3;
+      } else if (fourthId === team.id) {
+        placementScore = 700;
+        statusLabel = 'Hạng 4';
+        medalRank = 4;
+      }
+
+      return {
+        team,
+        seedIdx,
+        played,
+        wins,
+        losses,
+        scored,
+        conceded,
+        diff: scored - conceded,
+        placementScore,
+        statusLabel,
+        medalRank,
+      };
+    });
+
+    rows.sort((a, b) => {
+      if (b.placementScore !== a.placementScore) return b.placementScore - a.placementScore;
+      if (b.wins !== a.wins) return b.wins - a.wins;
+      if (b.diff !== a.diff) return b.diff - a.diff;
+      if (b.scored !== a.scored) return b.scored - a.scored;
+      return a.seedIdx - b.seedIdx;
+    });
+
+    return {
+      rows,
+      totalKoMatches: koMatches.length,
+      finishedKoMatches: koMatches.filter((m) => m.status === 'FINISHED').length,
+      champion: championId ? teamMap.get(championId) : undefined,
+      runnerUp: runnerUpId ? teamMap.get(runnerUpId) : undefined,
+      third: thirdId ? teamMap.get(thirdId) : undefined,
+      noThirdMatch,
+    };
+  })();
 
   return (
     <div className="space-y-6">
@@ -109,19 +260,23 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
             {isSingleLeague
               ? `Bảng Xếp Hạng Chung Cuộc (Vòng Tròn 1 Lượt • ${teams.length} ${sportMeta.unitShortLabel})`
-              : `Bảng Xếp Hạng Vòng Bảng (${groups.length} Bảng: ${groups.join(', ')})`}
+              : isDirectKnockout
+                ? `Tổng Kết Thứ Hạng Loại Trực Tiếp (${teams.length} ${sportMeta.unitShortLabel})`
+                : `Bảng Xếp Hạng Vòng Bảng (${groups.length} Bảng: ${groups.join(', ')})`}
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            {sportType === 'VOLLEYBALL'
-              ? 'Chuẩn FIVB: Thắng 2-0/3-0/3-1 = 3đ • Thắng 2-1/3-2 = 2đ • Thua 1-2/2-3 = 1đ • Thua cách biệt = 0đ. Xét: Trận thắng ➔ Hiệu số set ➔ Hiệu số điểm quả ➔ Đối đầu.'
-              : sportType === 'BADMINTON'
-                ? 'Chuẩn BWF: Thắng = 3đ • Thua = 0đ (không có hòa). Xét: Đối đầu ➔ Hiệu số ván thắng/thua ➔ Hiệu số điểm cầu ➔ Tổng điểm cầu thắng.'
-                : 'Thắng 3đ, Hòa 1đ, Thua 0đ. Nếu bằng điểm xét thứ tự: Đối đầu trực tiếp ➔ Hiệu số (+/-) ➔ Tổng bàn thắng ➔ Thẻ phạt (1 thẻ đỏ = 2 thẻ vàng) ➔ Bốc thăm BTC.'}
+            {isDirectKnockout
+              ? 'Thể thức Loại trực tiếp: Thắng đi tiếp, thua bị loại. Xem sơ đồ nhánh đấu trực quan tại tab "Nhánh Đấu".'
+              : sportType === 'VOLLEYBALL'
+                ? 'Chuẩn FIVB: Thắng 2-0/3-0/3-1 = 3đ • Thắng 2-1/3-2 = 2đ • Thua 1-2/2-3 = 1đ • Thua cách biệt = 0đ. Xét: Trận thắng ➔ Hiệu số set ➔ Hiệu số điểm quả ➔ Đối đầu.'
+                : sportType === 'BADMINTON'
+                  ? 'Chuẩn BWF: Thắng = 3đ • Thua = 0đ (không có hòa). Xét: Đối đầu ➔ Hiệu số ván thắng/thua ➔ Hiệu số điểm cầu ➔ Tổng điểm cầu thắng.'
+                  : 'Thắng 3đ, Hòa 1đ, Thua 0đ. Nếu bằng điểm xét thứ tự: Đối đầu trực tiếp ➔ Hiệu số (+/-) ➔ Tổng bàn thắng ➔ Thẻ phạt (1 thẻ đỏ = 2 thẻ vàng) ➔ Bốc thăm BTC.'}
           </p>
         </div>
 
         {/* Group Filter Tabs (chỉ hiển thị khi có nhiều bảng) */}
-        {!isSingleLeague && (
+        {!isSingleLeague && !isDirectKnockout && (
           <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 self-start md:self-auto flex-wrap">
             <button
               onClick={() => setSelectedGroup('ALL')}
@@ -147,6 +302,149 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Direct Knockout Summary Section */}
+      {isDirectKnockout && directKnockoutSummary && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-300 rounded-2xl p-4 flex items-center gap-3 shadow-xs">
+              <span className="text-3xl">🥇</span>
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase tracking-wider text-amber-700">Vô Địch</div>
+                <div className="text-base font-black text-slate-900 truncate">
+                  {directKnockoutSummary.champion ? directKnockoutSummary.champion.name : 'Chờ Chung Kết'}
+                </div>
+                <div className="text-[11px] text-slate-500 truncate">
+                  {directKnockoutSummary.champion?.class || 'Kết quả trận Chung Kết'}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-300 rounded-2xl p-4 flex items-center gap-3 shadow-xs">
+              <span className="text-3xl">🥈</span>
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase tracking-wider text-slate-600">Á Quân</div>
+                <div className="text-base font-black text-slate-900 truncate">
+                  {directKnockoutSummary.runnerUp ? directKnockoutSummary.runnerUp.name : 'Chờ Chung Kết'}
+                </div>
+                <div className="text-[11px] text-slate-500 truncate">
+                  {directKnockoutSummary.runnerUp?.class || 'Á quân trận Chung Kết'}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-4 flex items-center gap-3 shadow-xs">
+              <span className="text-3xl">🥉</span>
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase tracking-wider text-orange-700">
+                  {directKnockoutSummary.noThirdMatch ? 'Đồng Hạng Ba' : 'Hạng Ba'}
+                </div>
+                <div className="text-base font-black text-slate-900 truncate">
+                  {directKnockoutSummary.noThirdMatch
+                    ? '2 đội thua Bán Kết'
+                    : directKnockoutSummary.third
+                      ? directKnockoutSummary.third.name
+                      : 'Chờ Tranh Hạng 3'}
+                </div>
+                <div className="text-[11px] text-slate-500 truncate">
+                  {directKnockoutSummary.noThirdMatch
+                    ? 'Không tổ chức trận tranh 3-4'
+                    : directKnockoutSummary.third?.class || 'Kết quả trận Tranh 3-4'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs text-slate-800">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-8 h-8 rounded-xl bg-purple-100 border border-purple-200 text-purple-700 flex items-center justify-center font-black text-sm">
+                  🏆
+                </span>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">BẢNG TỔNG SẮP THÀNH TÍCH LOẠI TRỰC TIẾP</h3>
+                  <span className="text-[11px] text-slate-500">
+                    Đã hoàn thành {directKnockoutSummary.finishedKoMatches}/{directKnockoutSummary.totalKoMatches} trận nhánh đấu
+                  </span>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1 rounded-full">
+                {nextStageLabel}
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 text-[11px]">
+                  <tr>
+                    <th className="py-3 px-3 text-center w-10">STT</th>
+                    <th className="py-3 px-3">{sportMeta.unitLabel.toUpperCase()}</th>
+                    <th className="py-3 px-3">TRẠNG THÁI NHÁNH ĐẤU</th>
+                    <th className="py-3 px-2 text-center">ST</th>
+                    <th className="py-3 px-2 text-center">THẮNG</th>
+                    <th className="py-3 px-2 text-center">THUA</th>
+                    <th className="py-3 px-2 text-center">{isSetSport ? 'SET (+/-)' : 'HS (BT-BB)'}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {directKnockoutSummary.rows.map((row, idx) => (
+                    <tr
+                      key={row.team.id}
+                      className={
+                        row.medalRank === 1
+                          ? 'bg-amber-50/70 font-bold'
+                          : row.medalRank === 2
+                            ? 'bg-slate-50/80'
+                            : row.medalRank === 3
+                              ? 'bg-orange-50/50'
+                              : 'hover:bg-slate-50'
+                      }
+                    >
+                      <td className="py-3 px-3 text-center font-mono font-black text-slate-700">{idx + 1}</td>
+                      <td className="py-3 px-3">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: row.team.primaryColor || '#2563EB' }}
+                          />
+                          <div>
+                            <div className="font-bold text-slate-900">{row.team.name}</div>
+                            <div className="text-[10px] text-slate-500">{row.team.class}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            row.medalRank === 1
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : row.medalRank === 2
+                                ? 'bg-slate-200 text-slate-800 border-slate-300'
+                                : row.medalRank === 3
+                                  ? 'bg-orange-100 text-orange-800 border-orange-300'
+                                  : 'bg-slate-50 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {row.statusLabel}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2 text-center font-mono">{row.played}</td>
+                      <td className="py-3 px-2 text-center font-mono text-emerald-700 font-bold">{row.wins}</td>
+                      <td className="py-3 px-2 text-center font-mono text-rose-600">{row.losses}</td>
+                      <td className="py-3 px-2 text-center font-mono font-semibold text-slate-700">
+                        {row.scored} - {row.conceded}{' '}
+                        <span className={row.diff >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                          ({row.diff > 0 ? `+${row.diff}` : row.diff})
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tables Grid */}
       <div className={isSingleLeague ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 xl:grid-cols-2 gap-6'}>
@@ -425,7 +723,12 @@ export const StandingsView: React.FC<StandingsViewProps> = ({
                 <li><strong>Thua trận:</strong> 0 điểm (không có kết quả hòa)</li>
               </ul>
               <p className="pt-1 text-slate-600">
-                Mỗi ván đánh chạm {tournament?.setConfig?.pointsPerSet || 21} điểm (cách biệt 2 điểm, tối đa 30 điểm).
+                Mỗi ván đánh chạm {tournament?.setConfig?.pointsPerSet || 21} điểm
+                {tournament?.setConfig?.winByTwo === false
+                  ? ' (chạm điểm thắng ngay).'
+                  : tournament?.setConfig?.maxPointCap
+                    ? ` (cách biệt 2 điểm, tối đa ${tournament.setConfig.maxPointCap} điểm).`
+                    : ' (cách biệt 2 điểm).'}
               </p>
             </div>
             <div className="space-y-2">

@@ -295,7 +295,7 @@ export class DisciplineEngine {
         const override = manualOverrides[player.id];
         let btcDecision: 'PENDING' | 'SUSPENDED' | 'CLEARED' | undefined = override?.decision;
 
-        if (formatType === 'GROUP_KNOCKOUT') {
+        if (formatType !== 'SINGLE_LEAGUE') {
           if (totalReds > 0) {
             isSuspended = true;
             suspensionReason = 'Thẻ đỏ / 2 thẻ vàng - Treo giò theo quyết định BTC';

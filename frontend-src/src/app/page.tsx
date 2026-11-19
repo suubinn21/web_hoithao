@@ -18,7 +18,7 @@ import {
   getSportMeta,
 } from '@/types';
 import { StorageService, defaultCleanAwards } from '@/services/storage';
-import { ScheduleEngine, migrateMatchTimesTo7AM } from '@/services/scheduleEngine';
+import { ScheduleEngine, migrateMatchTimesTo7AM, buildVenuesForSport } from '@/services/scheduleEngine';
 import { AuthService } from '@/services/auth';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { UserManagementModal } from '@/components/auth/UserManagementModal';
@@ -511,7 +511,12 @@ export default function Home() {
     const updatedList = StorageService.getAllTournaments();
     const initialTeams = StorageService.getTeams();
     const initialMatches = StorageService.getMatches();
-    const initialVenues = StorageService.getVenues();
+    const rawVenues = StorageService.getVenues();
+    const desiredVenueCount = Math.max(4, newTour.numberOfVenues || 4);
+    const initialVenues =
+      newTour.sportType && newTour.sportType !== 'FOOTBALL'
+        ? buildVenuesForSport(desiredVenueCount, newTour.sportType)
+        : buildVenuesForSport(desiredVenueCount, 'FOOTBALL', rawVenues);
     const initialReferees = StorageService.getReferees();
     const initialFinances = StorageService.getFinances();
     const initialComplaints = StorageService.getComplaints();
@@ -581,6 +586,15 @@ export default function Home() {
     }
     const cleaned = StorageService.cleanExcessGroupsData(updatedTour);
     let currentMatches = cleaned.matches;
+    const desiredVenues = Math.max(venues.length, updatedTour.numberOfVenues || 3);
+    const nextVenues =
+      desiredVenues > venues.length || (updatedTour.sportType && updatedTour.sportType !== tournament.sportType)
+        ? buildVenuesForSport(desiredVenues, updatedTour.sportType, venues)
+        : venues;
+    if (nextVenues !== venues) {
+      setVenues(nextVenues);
+      StorageService.saveVenues(nextVenues);
+    }
     if (
       updatedTour.formatType === 'GROUP_KNOCKOUT' &&
       updatedTour.startDate &&
@@ -589,7 +603,7 @@ export default function Home() {
       currentMatches = ScheduleEngine.synchronizeMatchTimes(
         currentMatches,
         cleaned.teams,
-        venues,
+        nextVenues,
         referees,
         updatedTour.startDate
       );
@@ -607,6 +621,7 @@ export default function Home() {
       tournament: updatedTour,
       teams: cleaned.teams,
       matches: currentMatches,
+      venues: nextVenues,
       auditLogs: updatedLogs,
     });
     alert(`Đã cập nhật cấu hình giải đấu "${updatedTour.name}" thành công!`);
@@ -1093,12 +1108,22 @@ export default function Home() {
             <span>•</span>
             <span>{teams.length || tournament?.maxTeams || 12} {sportMeta.unitShortLabel} • {teams.reduce((s, t) => s + (t.players?.length || 0), 0)} {sportMeta.playerLabel}</span>
             <span>•</span>
-            <span>{matches.length || ((tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE' ? 66 : 32)} Trận đấu</span>
+            <span>
+              {matches.length ||
+                ((tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
+                  ? 66
+                  : tournament?.formatType === 'KNOCKOUT'
+                    ? Math.max(0, (teams.length || tournament?.maxTeams || 8) - 1)
+                    : 32)}{' '}
+              Trận đấu
+            </span>
             <span>•</span>
             <span>
               {(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
                 ? 'Vòng tròn 1 lượt'
-                : 'Chia bảng & Knockout'}
+                : tournament?.formatType === 'KNOCKOUT'
+                  ? 'Loại trực tiếp'
+                  : 'Chia bảng & Knockout'}
             </span>
           </div>
 

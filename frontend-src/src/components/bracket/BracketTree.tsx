@@ -15,7 +15,55 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
   teams,
   onSelectMatch,
 }) => {
-  // Quarterfinals
+  const dynamicStages = React.useMemo(() => {
+    const knockoutMatches = matches.filter((m) => m.round !== 'GROUP');
+    const isDynamic = knockoutMatches.some((m) => Boolean(m.nextMatchId || m.bracketStage !== undefined));
+    if (!isDynamic) return null;
+
+    const stageMap = new Map<number, Match[]>();
+    let thirdPlaceMatch: Match | undefined;
+    knockoutMatches.forEach((m) => {
+      if (m.round === 'THIRD_PLACE') {
+        thirdPlaceMatch = m;
+        return;
+      }
+      const st = m.bracketStage ?? 0;
+      if (!stageMap.has(st)) stageMap.set(st, []);
+      stageMap.get(st)!.push(m);
+    });
+
+    const sortedKeys = Array.from(stageMap.keys()).sort((a, b) => a - b);
+    const columns = sortedKeys.map((st) => {
+      const list = (stageMap.get(st) || []).sort((a, b) => (a.matchNumber || 0) - (b.matchNumber || 0));
+      const firstRound = list[0]?.round;
+      const title =
+        firstRound === 'FINAL'
+          ? 'CHUNG KẾT'
+          : firstRound === 'SEMI_FINAL'
+            ? 'VÒNG BÁN KẾT'
+            : firstRound === 'QUARTER_FINAL'
+              ? 'VÒNG TỨ KẾT'
+              : firstRound === 'ROUND_OF_16'
+                ? 'VÒNG 1/8'
+                : firstRound === 'ROUND_OF_32'
+                  ? 'VÒNG 1/16'
+                  : 'VÒNG SƠ LOẠI';
+      return { stage: st, title, matches: list };
+    });
+    return { columns, thirdPlaceMatch };
+  }, [matches]);
+
+  const getDynamicPlaceholder = (match: Match, side: 'HOME' | 'AWAY'): string => {
+    const feeder = matches.find((m) => m.nextMatchId === match.id && m.nextSlot === side);
+    if (feeder) return `Thắng ${feeder.roundLabel}`;
+    if (match.round === 'THIRD_PLACE') {
+      const sfFeeder = matches.find((m) => m.thirdPlaceMatchId === match.id && m.thirdPlaceSlot === side);
+      if (sfFeeder) return `Thua ${sfFeeder.roundLabel}`;
+    }
+    return 'Chưa xác định';
+  };
+
+  // Quarterfinals (Legacy GROUP_KNOCKOUT)
   const tk1 = matches.find((m) => m.id === 'M25');
   const tk2 = matches.find((m) => m.id === 'M26');
   const tk3 = matches.find((m) => m.id === 'M27');
@@ -28,6 +76,7 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
   // Third Place & Final
   const thirdPlace = matches.find((m) => m.id === 'M31');
   const grandFinal = matches.find((m) => m.id === 'M32');
+  const hasQuarterFinals = Boolean(tk1 || tk2 || tk3 || tk4);
 
   const getTeam = (teamId?: string) => teams.find((t) => t.id === teamId);
 
@@ -71,6 +120,11 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
               <MapPin className="w-2.5 h-2.5 text-sky-600 shrink-0" />
               <span>{(match.venueName ? match.venueName.match(/Sân\s*\d+/i)?.[0] || match.venueName.split(' - ')[0] : 'Sân 1').toUpperCase()}</span>
             </span>
+            {match.byeNote && (!home || !away) && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
+                BYE
+              </span>
+            )}
             {match.isCustomMatchup && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
                 Tự chỉnh
@@ -168,6 +222,126 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
   };
 
   const [mobileStage, setMobileStage] = React.useState<'ALL' | 'QF' | 'SF' | 'FINAL'>('ALL');
+  const [dynamicMobileStage, setDynamicMobileStage] = React.useState<number | 'ALL'>('ALL');
+
+  if (dynamicStages) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 text-slate-800">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="bg-purple-50 text-purple-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-purple-200">
+                SƠ ĐỒ LOẠI TRỰC TIẾP (SINGLE ELIMINATION)
+              </span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900">
+              {dynamicStages.columns.map((c) => c.title).join(' ➔ ')}
+            </h2>
+            <p className="text-xs text-slate-600 mt-1">
+              Thua là bị loại ngay • Đội được miễn vòng đầu (BYE) đi thẳng vào vòng kế tiếp. Chạm vào từng trận để nhập tỷ số trực tiếp.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span>Thắng Đi Tiếp</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+              <span>Miễn Vòng 1 (BYE)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Stage Pills */}
+        <div className="flex sm:hidden items-center gap-1 p-1 bg-slate-100 border border-slate-200 rounded-2xl overflow-x-auto text-xs">
+          <button
+            onClick={() => setDynamicMobileStage('ALL')}
+            className={`py-1.5 px-3 rounded-xl font-bold whitespace-nowrap ${
+              dynamicMobileStage === 'ALL' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600'
+            }`}
+          >
+            Tất cả
+          </button>
+          {dynamicStages.columns.map((col) => (
+            <button
+              key={col.stage}
+              onClick={() => setDynamicMobileStage(col.stage)}
+              className={`py-1.5 px-3 rounded-xl font-bold whitespace-nowrap ${
+                dynamicMobileStage === col.stage ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600'
+              }`}
+            >
+              {col.title}
+            </button>
+          ))}
+        </div>
+
+        <div className="overflow-x-auto pb-6 pt-2">
+          <div className="min-w-max flex items-stretch gap-8 py-4 px-2">
+            {dynamicStages.columns
+              .filter((col) => dynamicMobileStage === 'ALL' || dynamicMobileStage === col.stage)
+              .map((col, idx, arr) => {
+                const isFinalCol = idx === arr.length - 1;
+                return (
+                  <React.Fragment key={col.stage}>
+                    <div className="flex flex-col justify-around gap-5 flex-shrink-0">
+                      <div className={`text-xs font-black uppercase tracking-widest text-center mb-1 ${isFinalCol ? 'text-amber-600 flex items-center justify-center gap-1.5' : 'text-blue-700'}`}>
+                        {isFinalCol && <Trophy className="w-4 h-4 text-amber-500" />}
+                        <span>{col.title} ({col.matches.length} TRẬN)</span>
+                      </div>
+                      <div className="flex flex-col justify-around flex-1 gap-6">
+                        {col.matches.map((m) => (
+                          <div key={m.id}>
+                            {renderBracketMatch(
+                              m,
+                              m.roundLabel,
+                              getDynamicPlaceholder(m, 'HOME'),
+                              getDynamicPlaceholder(m, 'AWAY'),
+                              m.round === 'FINAL'
+                            )}
+                          </div>
+                        ))}
+                        {isFinalCol && dynamicStages.thirdPlaceMatch && (
+                          <div className="pt-4 border-t border-slate-200 flex flex-col items-center">
+                            <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1">
+                              <Award className="w-3.5 h-3.5 text-amber-600" />
+                              <span>TRANH HẠNG BA</span>
+                            </div>
+                            {renderBracketMatch(
+                              dynamicStages.thirdPlaceMatch,
+                              '🥉 TRANH HẠNG 3',
+                              getDynamicPlaceholder(dynamicStages.thirdPlaceMatch, 'HOME'),
+                              getDynamicPlaceholder(dynamicStages.thirdPlaceMatch, 'AWAY')
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {idx < arr.length - 1 && (
+                      <div className="hidden lg:flex flex-col justify-center text-slate-400">
+                        <ChevronRight className="w-7 h-7 text-blue-500/50" />
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (matches.filter((m) => m.round !== 'GROUP').length === 0) {
+    return (
+      <div className="bg-white border border-slate-200 rounded-3xl p-10 text-center space-y-3 shadow-xs">
+        <Trophy className="w-10 h-10 text-purple-500 mx-auto" />
+        <h3 className="text-lg font-black text-slate-900">Chưa Khởi Tạo Nhánh Đấu Loại Trực Tiếp</h3>
+        <p className="text-xs text-slate-600 max-w-md mx-auto">
+          Hãy đăng ký danh sách đội / VĐV (hỗ trợ cả số chẵn và số lẻ), bốc thăm thứ tự (nếu muốn) rồi vào tab <strong>Lịch đấu &amp; kết quả</strong> để bấm <strong>Tạo Lịch</strong>.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -179,13 +353,12 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
             <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
               VÒNG ĐẤU LOẠI TRỰC TIẾP
             </span>
-            <span className="text-xs text-slate-500">Điều lệ Điều 5 &amp; Điều 22</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-            Nhánh Đấu Tứ Kết ➔ Bán Kết ➔ Chung Kết
+            {hasQuarterFinals ? 'Nhánh Đấu Tứ Kết ➔ Bán Kết ➔ Chung Kết' : 'Nhánh Đấu Bán Kết ➔ Chung Kết'}
           </h2>
           <p className="text-xs text-slate-600 mt-1">
-            Hòa sau 40 phút thi đấu chính thức: Không đá hiệp phụ, tiến hành đá luân lưu 6m (Điều 8).
+            Hòa sau thời gian thi đấu chính thức: Không đá hiệp phụ, tiến hành đá luân lưu 6m.
           </p>
         </div>
 
@@ -211,14 +384,16 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
         >
           Sơ Đồ Ngang
         </button>
-        <button
-          onClick={() => setMobileStage('QF')}
-          className={`flex-1 py-1.5 px-2 rounded-xl font-bold text-center transition-all ${
-            mobileStage === 'QF' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          Tứ Kết
-        </button>
+        {hasQuarterFinals && (
+          <button
+            onClick={() => setMobileStage('QF')}
+            className={`flex-1 py-1.5 px-2 rounded-xl font-bold text-center transition-all ${
+              mobileStage === 'QF' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Tứ Kết
+          </button>
+        )}
         <button
           onClick={() => setMobileStage('SF')}
           className={`flex-1 py-1.5 px-2 rounded-xl font-bold text-center transition-all ${
@@ -240,7 +415,7 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
       {/* Mobile Selected Round Cards Stack (clean vertical view on phones) */}
       {mobileStage !== 'ALL' && (
         <div className="sm:hidden space-y-4 pt-2">
-          {mobileStage === 'QF' && (
+          {mobileStage === 'QF' && hasQuarterFinals && (
             <div className="space-y-3">
               <div className="text-xs font-black text-blue-700 uppercase tracking-widest flex items-center justify-between">
                 <span>4 TRẬN VÒNG TỨ KẾT</span>
@@ -262,8 +437,8 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
                 <span className="text-[10px] text-slate-500 font-normal">Chạm trận để vào Live Center</span>
               </div>
               <div className="flex flex-col gap-3">
-                {renderBracketMatch(bk1, 'BÁN KẾT 1', 'Thắng Tứ kết 1', 'Thắng Tứ kết 2')}
-                {renderBracketMatch(bk2, 'BÁN KẾT 2', 'Thắng Tứ kết 3', 'Thắng Tứ kết 4')}
+                {renderBracketMatch(bk1, 'BÁN KẾT 1', hasQuarterFinals ? 'Thắng Tứ kết 1' : 'Nhất bảng A', hasQuarterFinals ? 'Thắng Tứ kết 2' : 'Nhì bảng B')}
+                {renderBracketMatch(bk2, 'BÁN KẾT 2', hasQuarterFinals ? 'Thắng Tứ kết 3' : 'Nhất bảng B', hasQuarterFinals ? 'Thắng Tứ kết 4' : 'Nhì bảng A')}
               </div>
             </div>
           )}
@@ -285,33 +460,37 @@ export const BracketTree: React.FC<BracketTreeProps> = ({
 
       {/* Bracket Tree Flow Chart Visualizer (hidden on mobile if user chose a specific stage tab) */}
       <div className={`overflow-x-auto pb-6 pt-2 ${mobileStage !== 'ALL' ? 'hidden sm:block' : 'block'}`}>
-        <div className="min-w-[900px] flex items-center justify-between gap-8 py-4 px-2">
+        <div className="min-w-[720px] flex items-center justify-between gap-8 py-4 px-2">
           
-          {/* Column 1: Quarter Finals (Tứ kết) */}
-          <div className="flex flex-col space-y-8 flex-shrink-0">
-            <div className="text-xs font-black text-blue-700 uppercase tracking-widest text-center mb-1">
-              VÒNG TỨ KẾT (4 TRẬN)
-            </div>
-            
-            {renderBracketMatch(tk1, 'TỨ KẾT 1', 'Nhất bảng A', 'Nhì bảng B')}
-            {renderBracketMatch(tk2, 'TỨ KẾT 2', 'Nhất bảng B', 'Nhì bảng A')}
-            {renderBracketMatch(tk3, 'TỨ KẾT 3', 'Nhất bảng C', 'Nhì bảng D')}
-            {renderBracketMatch(tk4, 'TỨ KẾT 4', 'Nhất bảng D', 'Nhì bảng C')}
-          </div>
+          {hasQuarterFinals && (
+            <>
+              {/* Column 1: Quarter Finals (Tứ kết) */}
+              <div className="flex flex-col space-y-8 flex-shrink-0">
+                <div className="text-xs font-black text-blue-700 uppercase tracking-widest text-center mb-1">
+                  VÒNG TỨ KẾT (4 TRẬN)
+                </div>
+                
+                {renderBracketMatch(tk1, 'TỨ KẾT 1', 'Nhất bảng A', 'Nhì bảng B')}
+                {renderBracketMatch(tk2, 'TỨ KẾT 2', 'Nhất bảng B', 'Nhì bảng A')}
+                {renderBracketMatch(tk3, 'TỨ KẾT 3', 'Nhất bảng C', 'Nhì bảng D')}
+                {renderBracketMatch(tk4, 'TỨ KẾT 4', 'Nhất bảng D', 'Nhì bảng C')}
+              </div>
 
-          {/* SVG Connector Lines Left -> Center */}
-          <div className="hidden lg:flex flex-col justify-around h-[550px] w-12 text-slate-400">
-            <ChevronRight className="w-8 h-8 text-blue-500/50" />
-            <ChevronRight className="w-8 h-8 text-blue-500/50" />
-          </div>
+              {/* SVG Connector Lines Left -> Center */}
+              <div className="hidden lg:flex flex-col justify-around h-[550px] w-12 text-slate-400">
+                <ChevronRight className="w-8 h-8 text-blue-500/50" />
+                <ChevronRight className="w-8 h-8 text-blue-500/50" />
+              </div>
+            </>
+          )}
 
           {/* Column 2: Semi Finals (Bán kết) */}
           <div className="flex flex-col justify-around h-[550px] flex-shrink-0 space-y-12">
             <div className="text-xs font-black text-sky-700 uppercase tracking-widest text-center mb-1">
               VÒNG BÁN KẾT (2 TRẬN)
             </div>
-            {renderBracketMatch(bk1, 'BÁN KẾT 1', 'Thắng Tứ kết 1', 'Thắng Tứ kết 2')}
-            {renderBracketMatch(bk2, 'BÁN KẾT 2', 'Thắng Tứ kết 3', 'Thắng Tứ kết 4')}
+            {renderBracketMatch(bk1, 'BÁN KẾT 1', hasQuarterFinals ? 'Thắng Tứ kết 1' : 'Nhất bảng A', hasQuarterFinals ? 'Thắng Tứ kết 2' : 'Nhì bảng B')}
+            {renderBracketMatch(bk2, 'BÁN KẾT 2', hasQuarterFinals ? 'Thắng Tứ kết 3' : 'Nhất bảng B', hasQuarterFinals ? 'Thắng Tứ kết 4' : 'Nhì bảng A')}
           </div>
 
           {/* SVG Connector Lines Center -> Finals */}

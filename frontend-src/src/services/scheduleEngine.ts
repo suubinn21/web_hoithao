@@ -13,6 +13,7 @@ import {
   MatchRound,
   Tournament,
   StudentScheduleConfig,
+  getGroupLetters,
 } from '@/types';
 
 export const DEFAULT_STUDENT_SCHEDULE_CONFIG: StudentScheduleConfig = {
@@ -76,6 +77,103 @@ export interface StudentScheduleAnalysis {
   totalMatchDays: number;
 }
 
+export const buildAutoTimeSlots = (
+  count: number,
+  matchDurationMinutes: number = 60,
+  breakDurationMinutes: number = 5,
+  existing?: string[]
+): string[] => {
+  const safeCount = Math.max(1, Math.min(24, count || 2));
+  const stepMin = Math.max(15, (matchDurationMinutes || 60) + (breakDurationMinutes ?? 5) + 10);
+  const result: string[] = [];
+  if (Array.isArray(existing)) {
+    for (const s of existing) {
+      if (s && result.length < safeCount) result.push(s);
+    }
+  }
+  while (result.length < safeCount) {
+    let baseMin = 7 * 60 + result.length * stepMin;
+    if (result.length > 0) {
+      const prev = result[result.length - 1];
+      const [ph, pm] = prev.split(':').map(Number);
+      if (!Number.isNaN(ph) && !Number.isNaN(pm)) {
+        baseMin = ph * 60 + pm + stepMin;
+      }
+    }
+    const clampedMin = Math.min(22 * 60 + 30, baseMin);
+    const h = Math.floor(clampedMin / 60);
+    const m = clampedMin % 60;
+    result.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  }
+  return result;
+};
+
+export const buildVenuesForSport = (
+  count: number,
+  sportType?: Tournament['sportType'],
+  existing?: Venue[]
+): Venue[] => {
+  const safeCount = Math.max(1, Math.min(16, count || 3));
+  const prefix =
+    sportType === 'BADMINTON'
+      ? 'Sân Cầu Lông'
+      : sportType === 'VOLLEYBALL'
+        ? 'Sân Bóng Chuyền'
+        : 'Sân';
+  const defaultLoc =
+    sportType === 'BADMINTON' || sportType === 'VOLLEYBALL'
+      ? 'Nhà thi đấu / Khu thể thao CTUT'
+      : 'Khu thể thao sinh viên CTUT';
+
+  if (Array.isArray(existing) && existing.length > 0 && sportType === 'FOOTBALL') {
+    const out = [...existing];
+    while (out.length < safeCount) {
+      const idx = out.length + 1;
+      out.push({
+        id: `V${String(idx).padStart(2, '0')}`,
+        name: `${prefix} ${idx}`,
+        location: defaultLoc,
+        status: 'AVAILABLE',
+      });
+    }
+    return out;
+  }
+
+  return Array.from({ length: safeCount }, (_, i) => {
+    const idx = i + 1;
+    const prev = existing?.[i];
+    if (prev && (!sportType || sportType === 'FOOTBALL')) return prev;
+    return {
+      id: prev?.id || `V${String(idx).padStart(2, '0')}`,
+      name: `${prefix} ${idx}`,
+      location: defaultLoc,
+      status: prev?.status || 'AVAILABLE',
+    };
+  });
+};
+
+const ensureVenuePool = (venues: Venue[], pitchesCount: number): Venue[] => {
+  const activeVenues = venues.filter((v) => v.status !== 'MAINTENANCE');
+  const poolVenues = activeVenues.length > 0 ? activeVenues : venues;
+  if (poolVenues.length === 0) {
+    return Array.from({ length: pitchesCount }, (_, idx) => ({
+      id: `V${String(idx + 1).padStart(2, '0')}`,
+      name: `Sân ${idx + 1}`,
+      location: 'Khu thi đấu',
+      status: 'AVAILABLE' as const,
+    }));
+  }
+  return Array.from({ length: pitchesCount }, (_, idx) => {
+    if (idx < poolVenues.length) return poolVenues[idx];
+    return {
+      id: `V${String(idx + 1).padStart(2, '0')}`,
+      name: `Sân ${idx + 1}`,
+      location: poolVenues[0]?.location || 'Khu thi đấu',
+      status: 'AVAILABLE' as const,
+    };
+  });
+};
+
 export class ScheduleEngine {
   /**
    * Lấy danh sách các ngày thi đấu hợp lệ liên tiếp bắt đầu từ startDate,
@@ -127,7 +225,7 @@ export class ScheduleEngine {
   }[][] {
     const activeTeams = teams.filter((t) => t.status !== 'WITHDRAWN' && t.status !== 'DISQUALIFIED');
     if (activeTeams.length < 2) {
-      throw new Error('Cần tối thiểu 02 đội bóng để lập lịch thi đấu vòng tròn.');
+      throw new Error('Cần tối thiểu 02 đội / VĐV để lập lịch thi đấu vòng tròn.');
     }
 
     const list: (Team | null)[] = [...activeTeams];
@@ -226,27 +324,19 @@ export class ScheduleEngine {
         DEFAULT_STUDENT_SCHEDULE_CONFIG.pitchesCount,
     };
 
-    const pitchesCount = Math.max(1, Math.min(6, cfg.pitchesCount || 3));
-    const slotsPerDay = Math.max(1, Math.min(6, cfg.slotsPerDay || 2));
-    const timeSlots =
-      cfg.timeSlots && cfg.timeSlots.length >= slotsPerDay
-        ? cfg.timeSlots.slice(0, slotsPerDay)
-        : Array.from({ length: slotsPerDay }, (_, idx) => {
-            const baseMin = 7 * 60 + idx * ((tournament.matchDurationMinutes || 60) + (tournament.breakDurationMinutes || 5) + 15);
-            const h = Math.floor(baseMin / 60);
-            const m = baseMin % 60;
-            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-          });
+    const pitchesCount = Math.max(1, Math.min(16, cfg.pitchesCount || 3));
+    const slotsPerDay = Math.max(1, Math.min(24, cfg.slotsPerDay || 2));
+    const timeSlots = buildAutoTimeSlots(
+      slotsPerDay,
+      tournament.matchDurationMinutes || 60,
+      tournament.breakDurationMinutes ?? 5,
+      cfg.timeSlots
+    );
 
-    const activeVenues = venues.filter((v) => v.status !== 'MAINTENANCE');
-    const poolVenues = activeVenues.length > 0 ? activeVenues : venues;
-    if (poolVenues.length === 0) {
-      throw new Error('Không có sân bóng nào khả dụng để lập lịch thi đấu.');
+    if (venues.length === 0) {
+      throw new Error('Không có sân thi đấu nào khả dụng để lập lịch.');
     }
-
-    const usedVenues: Venue[] = Array.from({ length: pitchesCount }, (_, idx) => {
-      return poolVenues[idx % poolVenues.length];
-    });
+    const usedVenues = ensureVenuePool(venues, pitchesCount);
 
     const availableReferees = referees.filter((r) => r.status !== 'INACTIVE');
     const rounds = this.generateRoundRobinPairs(teams);
@@ -373,7 +463,7 @@ export class ScheduleEngine {
           const ref =
             availableReferees.length > 0
               ? availableReferees[(matchCounter - 1) % availableReferees.length]
-              : { id: `REF0${(slot.venueIdx % 3) + 1}`, name: `Trọng tài Sân ${(slot.venueIdx % 3) + 1}` };
+              : { id: `REF0${(slot.venueIdx % pitchesCount) + 1}`, name: `Trọng tài Sân ${(slot.venueIdx % pitchesCount) + 1}` };
 
           generatedMatches.push({
             id: `M${String(matchCounter).padStart(2, '0')}`,
@@ -444,7 +534,7 @@ export class ScheduleEngine {
             const ref =
               availableReferees.length > 0
                 ? availableReferees[(matchCounter - 1) % availableReferees.length]
-                : { id: `REF0${(p % 3) + 1}`, name: `Trọng tài Sân ${(p % 3) + 1}` };
+                : { id: `REF0${(p % pitchesCount) + 1}`, name: `Trọng tài Sân ${(p % pitchesCount) + 1}` };
 
             generatedMatches.push({
               id: `M${String(matchCounter).padStart(2, '0')}`,
@@ -499,16 +589,16 @@ export class ScheduleEngine {
         DEFAULT_STUDENT_SCHEDULE_CONFIG.pitchesCount,
     };
 
-    const pitchesCount = Math.max(1, Math.min(6, cfg.pitchesCount || 3));
-    const slotsPerDay = Math.max(1, Math.min(6, cfg.slotsPerDay || 2));
-    const timeSlots =
-      cfg.timeSlots && cfg.timeSlots.length >= slotsPerDay
-        ? cfg.timeSlots.slice(0, slotsPerDay)
-        : DEFAULT_STUDENT_SCHEDULE_CONFIG.timeSlots.slice(0, slotsPerDay);
+    const pitchesCount = Math.max(1, Math.min(16, cfg.pitchesCount || 3));
+    const slotsPerDay = Math.max(1, Math.min(24, cfg.slotsPerDay || 2));
+    const timeSlots = buildAutoTimeSlots(
+      slotsPerDay,
+      tournament.matchDurationMinutes || 60,
+      tournament.breakDurationMinutes ?? 5,
+      cfg.timeSlots
+    );
 
-    const activeVenues = venues.filter((v) => v.status !== 'MAINTENANCE');
-    const poolVenues = activeVenues.length > 0 ? activeVenues : venues;
-    const usedVenues = Array.from({ length: pitchesCount }, (_, idx) => poolVenues[idx % poolVenues.length]);
+    const usedVenues = ensureVenuePool(venues, pitchesCount);
 
     const lockedMatches = existingMatches.filter(
       (m) => m.status !== 'SCHEDULED' || m.isLocked
@@ -849,6 +939,271 @@ export class ScheduleEngine {
     };
   }
 
+  /**
+   * Tạo cây nhánh đấu LOẠI TRỰC TIẾP (Single Elimination) cho 2–64 đội/VĐV (hỗ trợ cả số lượng CHẴN & LẺ).
+   * - Tự động tính kích thước nhánh 2^k gần nhất và phân bổ suất miễn vòng đầu (BYE) đối xứng.
+   * - Các đội được miễn vòng đầu được đưa thẳng vào vòng tiếp theo (không tạo trận ảo).
+   * - Xếp lịch từng vòng tuần tự theo ngày/giờ/sân cấu hình, hỗ trợ tùy chọn Tranh Hạng 3.
+   */
+  static generateDirectKnockoutSchedule(
+    teams: Team[],
+    venues: Venue[],
+    referees: Referee[],
+    tournament: Partial<Tournament>
+  ): Match[] {
+    const activeTeams = teams.filter((t) => t.status !== 'WITHDRAWN' && t.status !== 'DISQUALIFIED');
+    const n = activeTeams.length;
+    if (n < 2) {
+      throw new Error('Cần tối thiểu 02 đội / VĐV để lập lịch loại trực tiếp.');
+    }
+
+    const cfg: StudentScheduleConfig = {
+      ...DEFAULT_STUDENT_SCHEDULE_CONFIG,
+      ...(tournament.scheduleConfig || {}),
+      pitchesCount:
+        tournament.scheduleConfig?.pitchesCount ||
+        tournament.numberOfVenues ||
+        DEFAULT_STUDENT_SCHEDULE_CONFIG.pitchesCount,
+    };
+
+    const pitchesCount = Math.max(1, Math.min(16, cfg.pitchesCount || 3));
+    const slotsPerDay = Math.max(1, Math.min(24, cfg.slotsPerDay || 4));
+    const timeSlots = buildAutoTimeSlots(
+      slotsPerDay,
+      tournament.matchDurationMinutes || 45,
+      tournament.breakDurationMinutes ?? 5,
+      cfg.timeSlots
+    );
+
+    if (venues.length === 0) {
+      throw new Error('Không có sân thi đấu khả dụng để lập lịch.');
+    }
+    const usedVenues = ensureVenuePool(venues, pitchesCount);
+    const availableReferees = referees.filter((r) => r.status !== 'INACTIVE');
+
+    // Kích thước nhánh 2^k >= n
+    let bracketSize = 2;
+    while (bracketSize < n) bracketSize *= 2;
+    const totalStages = Math.log2(bracketSize); // 1 (2đ), 2 (4đ), 3 (8đ), 4 (16đ), 5 (32đ), 6 (64đ)
+
+    // Thứ tự hạt giống chuẩn để các suất BYE phân bổ đều ở 2 nửa nhánh
+    let seedOrder = [1, 2];
+    while (seedOrder.length < bracketSize) {
+      const nextSum = seedOrder.length * 2 + 1;
+      const expanded: number[] = [];
+      for (const s of seedOrder) {
+        expanded.push(s, nextSum - s);
+      }
+      seedOrder = expanded;
+    }
+
+    const seededTeams: (Team | null)[] = seedOrder.map((seed) =>
+      seed <= n ? activeTeams[seed - 1] : null
+    );
+
+    const getRoundMeta = (
+      stageIdx: number
+    ): { round: MatchRound; prefixLabel: string } => {
+      const roundsFromFinal = totalStages - 1 - stageIdx;
+      if (roundsFromFinal === 0) return { round: 'FINAL', prefixLabel: 'CHUNG KẾT VÔ ĐỊCH' };
+      if (roundsFromFinal === 1) return { round: 'SEMI_FINAL', prefixLabel: 'Bán kết' };
+      if (roundsFromFinal === 2) return { round: 'QUARTER_FINAL', prefixLabel: 'Tứ kết' };
+      if (roundsFromFinal === 3) return { round: 'ROUND_OF_16', prefixLabel: 'Vòng 1/8' };
+      if (roundsFromFinal === 4) return { round: 'ROUND_OF_32', prefixLabel: 'Vòng 1/16' };
+      return { round: 'ROUND_OF_64', prefixLabel: 'Vòng 1/32' };
+    };
+
+    const hasThirdPlace = cfg.hasThirdPlace !== false && n >= 4;
+
+    // Tạo node cho tất cả các vòng từ Final ngược về Stage 0
+    interface DraftNode {
+      id: string;
+      stage: number;
+      indexInStage: number;
+      round: MatchRound;
+      roundLabel: string;
+      homeTeamId: string;
+      awayTeamId: string;
+      nextMatchId?: string;
+      nextSlot?: 'HOME' | 'AWAY';
+      thirdPlaceMatchId?: string;
+      thirdPlaceSlot?: 'HOME' | 'AWAY';
+      byeTeams: string[];
+      skip: boolean;
+    }
+
+    const stagesNodes: DraftNode[][] = [];
+    for (let s = 0; s < totalStages; s++) {
+      const count = bracketSize / Math.pow(2, s + 1);
+      const { round, prefixLabel } = getRoundMeta(s);
+      const nodes: DraftNode[] = [];
+      for (let i = 0; i < count; i++) {
+        const isFinal = s === totalStages - 1;
+        const id = isFinal ? 'KO-FINAL' : `KO-S${s + 1}-M${i + 1}`;
+        const roundLabel = isFinal ? prefixLabel : `${prefixLabel} ${i + 1}`;
+        nodes.push({
+          id,
+          stage: s,
+          indexInStage: i,
+          round,
+          roundLabel,
+          homeTeamId: '',
+          awayTeamId: '',
+          byeTeams: [],
+          skip: false,
+        });
+      }
+      stagesNodes.push(nodes);
+    }
+
+    // Nối nextMatchId cho s = 0 .. totalStages - 2
+    for (let s = 0; s < totalStages - 1; s++) {
+      const curNodes = stagesNodes[s];
+      const nextNodes = stagesNodes[s + 1];
+      curNodes.forEach((node, idx) => {
+        const parent = nextNodes[Math.floor(idx / 2)];
+        node.nextMatchId = parent.id;
+        node.nextSlot = idx % 2 === 0 ? 'HOME' : 'AWAY';
+      });
+    }
+
+    // Nếu có trận Tranh Hạng 3, nối 2 trận Bán kết tới KO-3RD
+    let thirdPlaceNode: DraftNode | null = null;
+    if (hasThirdPlace && totalStages >= 2) {
+      const sfStage = totalStages - 2;
+      thirdPlaceNode = {
+        id: 'KO-3RD',
+        stage: totalStages - 1,
+        indexInStage: 1,
+        round: 'THIRD_PLACE',
+        roundLabel: 'Tranh Hạng 3',
+        homeTeamId: '',
+        awayTeamId: '',
+        byeTeams: [],
+        skip: false,
+      };
+      if (stagesNodes[sfStage][0]) {
+        stagesNodes[sfStage][0].thirdPlaceMatchId = 'KO-3RD';
+        stagesNodes[sfStage][0].thirdPlaceSlot = 'HOME';
+      }
+      if (stagesNodes[sfStage][1]) {
+        stagesNodes[sfStage][1].thirdPlaceMatchId = 'KO-3RD';
+        stagesNodes[sfStage][1].thirdPlaceSlot = 'AWAY';
+      }
+    }
+
+    // Điền đội ở Stage 0 và tự động đẩy đội được miễn vòng 1 (BYE) sang Stage 1
+    stagesNodes[0].forEach((node, idx) => {
+      const tHome = seededTeams[idx * 2];
+      const tAway = seededTeams[idx * 2 + 1];
+      if (tHome && tAway) {
+        node.homeTeamId = tHome.id;
+        node.awayTeamId = tAway.id;
+      } else if (tHome || tAway) {
+        const byeTeam = (tHome || tAway)!;
+        node.skip = true;
+        if (totalStages === 1) {
+          // Không xảy ra với n >= 2 nhưng giữ an toàn
+          node.homeTeamId = byeTeam.id;
+          node.skip = false;
+        } else {
+          const parent = stagesNodes[1][Math.floor(idx / 2)];
+          if (idx % 2 === 0) parent.homeTeamId = byeTeam.id;
+          else parent.awayTeamId = byeTeam.id;
+          parent.byeTeams.push(byeTeam.shortName || byeTeam.name);
+        }
+      } else {
+        node.skip = true;
+      }
+    });
+
+    // Gom các trận thật theo từng vòng để xếp lịch tuần tự (vòng sau luôn sau vòng trước)
+    const activeStages: DraftNode[][] = stagesNodes
+      .map((nodes) => nodes.filter((nd) => !nd.skip))
+      .filter((nodes) => nodes.length > 0);
+
+    const totalRealMatches = activeStages.reduce((s, arr) => s + arr.length, 0) + (thirdPlaceNode ? 1 : 0);
+    const neededDays = Math.ceil(totalRealMatches / Math.max(1, pitchesCount * slotsPerDay)) + totalStages + 5;
+    const startDate = tournament.startDate || '2026-10-18';
+    const candidateDates = this.generateCandidateDates(startDate, neededDays, cfg);
+    const dates = candidateDates.length > 0 ? candidateDates : [startDate];
+
+    let dayCursor = 0;
+    let timeCursor = 0;
+    let pitchCursor = 0;
+
+    const consumeNextSlot = (advanceTimeRound: boolean): { date: string; time: string; venue: Venue; venueIdx: number } => {
+      if (advanceTimeRound && pitchCursor > 0) {
+        pitchCursor = 0;
+        timeCursor++;
+        if (timeCursor >= slotsPerDay) {
+          timeCursor = 0;
+          dayCursor++;
+        }
+      }
+      if (pitchCursor >= pitchesCount) {
+        pitchCursor = 0;
+        timeCursor++;
+      }
+      if (timeCursor >= slotsPerDay) {
+        timeCursor = 0;
+        dayCursor++;
+      }
+      const dateStr = dates[Math.min(dayCursor, dates.length - 1)];
+      const timeStr = timeSlots[timeCursor % timeSlots.length];
+      const vIdx = pitchCursor;
+      const venue = usedVenues[vIdx];
+      pitchCursor++;
+      return { date: dateStr, time: timeStr, venue, venueIdx: vIdx };
+    };
+
+    const generated: Match[] = [];
+    let matchCounter = 1;
+
+    activeStages.forEach((stageList, sIdx) => {
+      const isFinalStage = sIdx === activeStages.length - 1;
+      const stageNodes = isFinalStage && thirdPlaceNode ? [thirdPlaceNode, ...stageList] : stageList;
+
+      stageNodes.forEach((nd, mIdx) => {
+        const slot = consumeNextSlot(sIdx > 0 && mIdx === 0);
+        const ref =
+          availableReferees.length > 0
+            ? availableReferees[(matchCounter - 1) % availableReferees.length]
+            : { id: `REF0${(slot.venueIdx % pitchesCount) + 1}`, name: `Trọng tài Sân ${(slot.venueIdx % pitchesCount) + 1}` };
+
+        generated.push({
+          id: nd.id,
+          matchNumber: matchCounter,
+          round: nd.round,
+          roundLabel: nd.roundLabel,
+          venueId: slot.venue.id,
+          venueName: slot.venue.name,
+          date: slot.date,
+          time: slot.time,
+          homeTeamId: nd.homeTeamId,
+          awayTeamId: nd.awayTeamId,
+          refereeId: ref.id,
+          refereeName: ref.name,
+          homeScore: 0,
+          awayScore: 0,
+          status: 'SCHEDULED',
+          currentMinute: 0,
+          half: 1,
+          events: [],
+          bracketStage: nd.stage,
+          ...(nd.nextMatchId ? { nextMatchId: nd.nextMatchId, nextSlot: nd.nextSlot } : {}),
+          ...(nd.thirdPlaceMatchId
+            ? { thirdPlaceMatchId: nd.thirdPlaceMatchId, thirdPlaceSlot: nd.thirdPlaceSlot }
+            : {}),
+          ...(nd.byeTeams.length > 0 ? { byeNote: `Miễn vòng đầu (BYE): ${nd.byeTeams.join(', ')}` } : {}),
+        });
+        matchCounter++;
+      });
+    });
+
+    return generated;
+  }
+
   // ===========================================================================
   // CÁC HÀM CHO THỂ THỨC CŨ (GROUP_KNOCKOUT - 16 ĐỘI / 4 BẢNG / 4 SÂN)
   // ===========================================================================
@@ -856,12 +1211,110 @@ export class ScheduleEngine {
     teams: Team[],
     venues: Venue[],
     referees: Referee[],
-    startDate: string = '2026-10-15'
+    startDate: string = '2026-10-15',
+    tournament?: Partial<Tournament>
   ): Match[] {
-    const activeVenues = venues.filter((v) => v.status !== 'MAINTENANCE');
     const availableReferees = referees.filter((r) => r.status !== 'INACTIVE');
+    if (venues.length === 0) {
+      throw new Error('Không có sân thi đấu khả dụng để lập lịch.');
+    }
+
+    const numGroups = tournament?.numberOfGroups || 4;
+    const pitchesCount = Math.max(
+      1,
+      Math.min(16, tournament?.scheduleConfig?.pitchesCount || tournament?.numberOfVenues || 4)
+    );
+    const groupLetters = getGroupLetters(numGroups);
+    const anyOversizedGroup = groupLetters.some((g) => teams.filter((t) => t.group === g).length > 4);
+    const useDynamicGroups =
+      numGroups !== 4 ||
+      anyOversizedGroup ||
+      pitchesCount !== 4 ||
+      (tournament?.sportType && tournament.sportType !== 'FOOTBALL');
+
+    if (useDynamicGroups) {
+      const usedVenues = ensureVenuePool(venues, pitchesCount);
+      const duration = tournament?.matchDurationMinutes || 45;
+      const breakMin = tournament?.breakDurationMinutes ?? 5;
+      const cfg: StudentScheduleConfig = {
+        ...DEFAULT_STUDENT_SCHEDULE_CONFIG,
+        ...(tournament?.scheduleConfig || {}),
+        pitchesCount,
+      };
+      const slotsPerDay = Math.max(1, Math.min(24, cfg.slotsPerDay || Math.max(4, numGroups * 2)));
+      const timeSlots = buildAutoTimeSlots(slotsPerDay, duration, breakMin, cfg.timeSlots);
+
+      const allGroupMatches: { group: string; roundNumber: number; home: Team; away: Team }[] = [];
+      for (const g of groupLetters) {
+        const gTeams = teams.filter((t) => t.group === g && t.status !== 'WITHDRAWN' && t.status !== 'DISQUALIFIED');
+        if (gTeams.length < 2) continue;
+        const gRounds = this.generateRoundRobinPairs(gTeams);
+        gRounds.forEach((rnd) => {
+          rnd.forEach((p) => {
+            allGroupMatches.push({ group: g, roundNumber: p.roundNumber, home: p.home, away: p.away });
+          });
+        });
+      }
+      allGroupMatches.sort((a, b) => a.roundNumber - b.roundNumber || a.group.localeCompare(b.group));
+
+      const neededDays = Math.ceil(Math.max(1, allGroupMatches.length) / (pitchesCount * slotsPerDay)) + 5;
+      const candidateDates = this.generateCandidateDates(startDate, neededDays, cfg);
+      const dates = candidateDates.length > 0 ? candidateDates : [startDate];
+
+      const pool = [...allGroupMatches];
+      const generated: Match[] = [];
+      let matchNumber = 1;
+
+      for (const dayStr of dates) {
+        if (pool.length === 0) break;
+        for (let s = 0; s < slotsPerDay && pool.length > 0; s++) {
+          const slotTime = timeSlots[s];
+          const busyTeamsAtSlot = new Set<string>();
+          for (let p = 0; p < pitchesCount && pool.length > 0; p++) {
+            const pickIdx = pool.findIndex(
+              (item) => !busyTeamsAtSlot.has(item.home.id) && !busyTeamsAtSlot.has(item.away.id)
+            );
+            if (pickIdx === -1) break;
+            const picked = pool.splice(pickIdx, 1)[0];
+            busyTeamsAtSlot.add(picked.home.id);
+            busyTeamsAtSlot.add(picked.away.id);
+            const venue = usedVenues[p];
+            const ref =
+              availableReferees.length > 0
+                ? availableReferees[(matchNumber - 1) % availableReferees.length]
+                : { id: `REF0${(p % pitchesCount) + 1}`, name: `Trọng tài Sân ${(p % pitchesCount) + 1}` };
+            generated.push({
+              id: `GRP-${String(matchNumber).padStart(2, '0')}`,
+              matchNumber,
+              round: 'GROUP',
+              roundNumber: picked.roundNumber,
+              group: picked.group,
+              roundLabel: `Bảng ${picked.group} - Lượt ${picked.roundNumber}`,
+              venueId: venue.id,
+              venueName: venue.name,
+              date: dayStr,
+              time: slotTime,
+              homeTeamId: picked.home.id,
+              awayTeamId: picked.away.id,
+              refereeId: ref.id,
+              refereeName: ref.name,
+              homeScore: 0,
+              awayScore: 0,
+              status: 'SCHEDULED',
+              currentMinute: 0,
+              half: 1,
+              events: [],
+            });
+            matchNumber++;
+          }
+        }
+      }
+      return generated;
+    }
+
+    const activeVenues = venues.filter((v) => v.status !== 'MAINTENANCE');
     if (activeVenues.length === 0) {
-      throw new Error('Không có sân bóng khả dụng để lập lịch thi đấu.');
+      throw new Error('Không có sân thi đấu khả dụng để lập lịch.');
     }
 
     const v1 = activeVenues[0] || venues[0];
@@ -952,18 +1405,26 @@ export class ScheduleEngine {
   static generateKnockoutSchedule(
     venues: Venue[],
     referees: Referee[],
-    startDate: string = '2026-10-15'
+    startDate: string = '2026-10-15',
+    tournament?: Partial<Tournament>,
+    matchNumberOffset: number = 24
   ): Match[] {
-    const v1 = venues[0] || { id: 'V01', name: 'Sân 1' };
-    const v2 = venues[1] || v1;
-    const v3 = venues[2] || v1;
-    const v4 = venues[3] || v2;
+    const pitchesCount = Math.max(
+      1,
+      Math.min(16, tournament?.scheduleConfig?.pitchesCount || tournament?.numberOfVenues || 4)
+    );
+    const usedVenues = ensureVenuePool(venues, Math.max(2, pitchesCount));
+    const v1 = usedVenues[0];
+    const v2 = usedVenues[1] || v1;
+    const v3 = usedVenues[2] || v1;
+    const v4 = usedVenues[3] || v2;
     const availableReferees = referees.filter((r) => r.status !== 'INACTIVE');
     const ref1 = availableReferees[0] || { id: 'REF01', name: 'Trần Văn Hùng' };
     const ref2 = availableReferees[1] || ref1;
     const ref3 = availableReferees[2] || ref1;
     const ref4 = availableReferees[3] || ref2;
 
+    const numGroups = tournament?.numberOfGroups || 4;
     const knockoutSlots: {
       id: string;
       matchNumber: number;
@@ -973,16 +1434,60 @@ export class ScheduleEngine {
       venueId: string;
       venueName: string;
       referee: { id: string; name: string };
-    }[] = [
-      { id: 'M25', matchNumber: 25, round: 'QUARTER_FINAL', label: 'Tứ kết 1 (Nhất A vs Nhì B)', time: '15:00', venueId: v1.id, venueName: v1.name, referee: ref1 },
-      { id: 'M26', matchNumber: 26, round: 'QUARTER_FINAL', label: 'Tứ kết 2 (Nhất B vs Nhì A)', time: '15:00', venueId: v2.id, venueName: v2.name, referee: ref2 },
-      { id: 'M27', matchNumber: 27, round: 'QUARTER_FINAL', label: 'Tứ kết 3 (Nhất C vs Nhì D)', time: '15:00', venueId: v3.id, venueName: v3.name, referee: ref3 },
-      { id: 'M28', matchNumber: 28, round: 'QUARTER_FINAL', label: 'Tứ kết 4 (Nhất D vs Nhì C)', time: '15:00', venueId: v4.id, venueName: v4.name, referee: ref4 },
-      { id: 'M29', matchNumber: 29, round: 'SEMI_FINAL', label: 'Bán kết 1 (Thắng TK1 vs Thắng TK2)', time: '15:55', venueId: v1.id, venueName: v1.name, referee: ref1 },
-      { id: 'M30', matchNumber: 30, round: 'SEMI_FINAL', label: 'Bán kết 2 (Thắng TK3 vs Thắng TK4)', time: '15:55', venueId: v2.id, venueName: v2.name, referee: ref2 },
-      { id: 'M31', matchNumber: 31, round: 'THIRD_PLACE', label: 'Tranh Hạng 3 (Thua BK1 vs Thua BK2)', time: '16:50', venueId: v1.id, venueName: v1.name, referee: ref1 },
-      { id: 'M32', matchNumber: 32, round: 'FINAL', label: 'CHUNG KẾT VÔ ĐỊCH (Thắng BK1 vs Thắng BK2)', time: '16:50', venueId: v2.id, venueName: v2.name, referee: ref2 },
-    ];
+    }[] =
+      numGroups <= 2
+        ? [
+            {
+              id: 'M29',
+              matchNumber: matchNumberOffset + 1,
+              round: 'SEMI_FINAL',
+              label: numGroups === 1 ? 'Bán kết 1 (Hạng 1 vs Hạng 4)' : 'Bán kết 1 (Nhất A vs Nhì B)',
+              time: '15:55',
+              venueId: v1.id,
+              venueName: v1.name,
+              referee: ref1,
+            },
+            {
+              id: 'M30',
+              matchNumber: matchNumberOffset + 2,
+              round: 'SEMI_FINAL',
+              label: numGroups === 1 ? 'Bán kết 2 (Hạng 2 vs Hạng 3)' : 'Bán kết 2 (Nhất B vs Nhì A)',
+              time: '15:55',
+              venueId: v2.id,
+              venueName: v2.name,
+              referee: ref2,
+            },
+            {
+              id: 'M31',
+              matchNumber: matchNumberOffset + 3,
+              round: 'THIRD_PLACE',
+              label: 'Tranh Hạng 3 (Thua BK1 vs Thua BK2)',
+              time: '16:50',
+              venueId: v1.id,
+              venueName: v1.name,
+              referee: ref1,
+            },
+            {
+              id: 'M32',
+              matchNumber: matchNumberOffset + 4,
+              round: 'FINAL',
+              label: 'CHUNG KẾT VÔ ĐỊCH (Thắng BK1 vs Thắng BK2)',
+              time: '16:50',
+              venueId: v2.id,
+              venueName: v2.name,
+              referee: ref2,
+            },
+          ]
+        : [
+            { id: 'M25', matchNumber: matchNumberOffset + 1, round: 'QUARTER_FINAL', label: 'Tứ kết 1 (Nhất A vs Nhì B)', time: '15:00', venueId: v1.id, venueName: v1.name, referee: ref1 },
+            { id: 'M26', matchNumber: matchNumberOffset + 2, round: 'QUARTER_FINAL', label: 'Tứ kết 2 (Nhất B vs Nhì A)', time: '15:00', venueId: v2.id, venueName: v2.name, referee: ref2 },
+            { id: 'M27', matchNumber: matchNumberOffset + 3, round: 'QUARTER_FINAL', label: 'Tứ kết 3 (Nhất C vs Nhì D)', time: '15:00', venueId: v3.id, venueName: v3.name, referee: ref3 },
+            { id: 'M28', matchNumber: matchNumberOffset + 4, round: 'QUARTER_FINAL', label: 'Tứ kết 4 (Nhất D vs Nhì C)', time: '15:00', venueId: v4.id, venueName: v4.name, referee: ref4 },
+            { id: 'M29', matchNumber: matchNumberOffset + 5, round: 'SEMI_FINAL', label: 'Bán kết 1 (Thắng TK1 vs Thắng TK2)', time: '15:55', venueId: v1.id, venueName: v1.name, referee: ref1 },
+            { id: 'M30', matchNumber: matchNumberOffset + 6, round: 'SEMI_FINAL', label: 'Bán kết 2 (Thắng TK3 vs Thắng TK4)', time: '15:55', venueId: v2.id, venueName: v2.name, referee: ref2 },
+            { id: 'M31', matchNumber: matchNumberOffset + 7, round: 'THIRD_PLACE', label: 'Tranh Hạng 3 (Thua BK1 vs Thua BK2)', time: '16:50', venueId: v1.id, venueName: v1.name, referee: ref1 },
+            { id: 'M32', matchNumber: matchNumberOffset + 8, round: 'FINAL', label: 'CHUNG KẾT VÔ ĐỊCH (Thắng BK1 vs Thắng BK2)', time: '16:50', venueId: v2.id, venueName: v2.name, referee: ref2 },
+          ];
 
     return knockoutSlots.map((k) => ({
       id: k.id,

@@ -15,11 +15,15 @@ import {
   determineSetWinner,
   computeSetsSummary,
   formatMatchSetsCompact,
+  computeMatchElapsedSeconds,
+  formatClockMMSS,
 } from '@/types';
 import { StorageService } from '@/services/storage';
+import { getSyncedNowMs } from '@/services/dbSync';
 import { SoundFX } from '@/utils/soundEffects';
 import { DisciplineEngine } from '@/services/disciplineEngine';
 import { KnockoutEngine } from '@/services/knockoutEngine';
+import { RankingEngine } from '@/services/rankingEngine';
 import {
   Play,
   Pause,
@@ -36,6 +40,7 @@ import {
   Award,
   MapPin,
   Ban,
+  Trash2,
 } from 'lucide-react';
 
 interface LiveMatchCenterProps {
@@ -88,9 +93,18 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
   const [editMatchDurationInput, setEditMatchDurationInput] = useState<number>(60);
   const [editMatchBreakInput, setEditMatchBreakInput] = useState<number>(5);
   const [editMatchCurrentMinInput, setEditMatchCurrentMinInput] = useState<number>(0);
+  const [editMatchCurrentSecInput, setEditMatchCurrentSecInput] = useState<number>(0);
   const [forfeitTeamId, setForfeitTeamId] = useState<string>('');
   const [forfeitReason, setForfeitReason] = useState<string>('Đến trễ quá 10 phút so với giờ thi đấu');
   const [postEditReason, setPostEditReason] = useState('');
+  const [postEditHomeScore, setPostEditHomeScore] = useState<number>(0);
+  const [postEditAwayScore, setPostEditAwayScore] = useState<number>(0);
+  const [postEditEvents, setPostEditEvents] = useState<MatchEvent[]>([]);
+  const [postEditAddTeamId, setPostEditAddTeamId] = useState<string>('');
+  const [postEditAddScorerId, setPostEditAddScorerId] = useState<string>('');
+  const [postEditAddAssistId, setPostEditAddAssistId] = useState<string>('');
+  const [postEditAddMinute, setPostEditAddMinute] = useState<number>(1);
+  const [postEditAddOwnGoal, setPostEditAddOwnGoal] = useState<boolean>(false);
 
   // Selected team for event creation
   const [eventTeamId, setEventTeamId] = useState<string>('');
@@ -133,24 +147,61 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     return (a.matchNumber || 0) - (b.matchNumber || 0);
   });
 
-  // Synchronize timer & active set with match state
+  const canEdit =
+    currentRole === 'SUPER_ADMIN' ||
+    currentRole === 'ORGANIZER' ||
+    currentRole === 'REFEREE';
+
+  // Synchronize timer & active set with authoritative synced match clock
   useEffect(() => {
     if (activeMatch) {
-      setSeconds(activeMatch.currentMinute * 60);
-      setTimerRunning(activeMatch.status === 'LIVE');
-      setEventMinute(Math.max(1, activeMatch.currentMinute));
+      const syncedSec = computeMatchElapsedSeconds(activeMatch, getSyncedNowMs());
+      setSeconds(syncedSec);
+      const isActivelyRunning =
+        activeMatch.status === 'LIVE' && !activeMatch.clockPaused;
+      setTimerRunning(isActivelyRunning);
+      setEventMinute(Math.max(1, Math.floor(syncedSec / 60)));
       setActiveSetNum(Math.min(setConfig.bestOf, Math.max(1, activeMatch.currentSet || 1)));
     }
-  }, [activeMatchId, activeMatch?.currentMinute, activeMatch?.status, activeMatch?.currentSet, setConfig.bestOf]);
+  }, [
+    activeMatchId,
+    activeMatch?.currentMinute,
+    activeMatch?.status,
+    activeMatch?.clockStartedAt,
+    activeMatch?.clockBaseSeconds,
+    activeMatch?.clockPaused,
+    activeMatch?.currentSet,
+    setConfig.bestOf,
+  ]);
 
-  // Live timer interval (continuous clock without stoppage time for Football; stopwatch only for Set sports)
+  // Live timer interval (derives elapsed seconds from server-calibrated clockStartedAt so all devices stay in sync)
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (timerRunning && activeMatch && activeMatch.status === 'LIVE') {
-      interval = setInterval(() => {
+    if (!timerRunning || !activeMatch || activeMatch.status !== 'LIVE' || activeMatch.clockPaused) {
+      return;
+    }
+
+    const hasSyncedAnchor =
+      typeof activeMatch.clockStartedAt === 'number' &&
+      Number.isFinite(activeMatch.clockStartedAt) &&
+      activeMatch.clockStartedAt > 0;
+
+    const interval = setInterval(() => {
+      if (hasSyncedAnchor) {
+        const nextSec = computeMatchElapsedSeconds(activeMatch, getSyncedNowMs());
+        setSeconds(nextSec);
+        const min = Math.floor(nextSec / 60);
+        setEventMinute(Math.max(1, min));
+        if (canEdit && !isSetSport) {
+          if (min === halfDurationMinutes && activeMatch.half === 1) {
+            handleSetHalftime();
+          } else if (min >= matchDurationMinutes) {
+            handleFinishMatch();
+          }
+        }
+      } else {
         setSeconds((prev) => {
           const next = prev + 1;
-          if (!isSetSport) {
+          if (canEdit && !isSetSport) {
             const min = Math.floor(next / 60);
             if (min === halfDurationMinutes && activeMatch.half === 1) {
               handleSetHalftime();
@@ -160,17 +211,25 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           }
           return next;
         });
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [timerRunning, activeMatch?.half, activeMatch?.status, halfDurationMinutes, matchDurationMinutes, isSetSport]);
+      }
+    }, hasSyncedAnchor ? 500 : 1000);
 
-  const canEdit =
-    currentRole === 'SUPER_ADMIN' ||
-    currentRole === 'ORGANIZER' ||
-    currentRole === 'REFEREE';
+    return () => {
+      clearInterval(interval);
+    };
+  }, [
+    timerRunning,
+    activeMatch?.id,
+    activeMatch?.half,
+    activeMatch?.status,
+    activeMatch?.clockStartedAt,
+    activeMatch?.clockBaseSeconds,
+    activeMatch?.clockPaused,
+    halfDurationMinutes,
+    matchDurationMinutes,
+    isSetSport,
+    canEdit,
+  ]);
 
   // Trigger goal confetti and fanfare
   const triggerCelebration = () => {
@@ -187,36 +246,71 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
   const handleStartResume = () => {
     if (!activeMatch) return;
     SoundFX.playWhistle();
+    const nowMs = getSyncedNowMs();
+    const baseSec = computeMatchElapsedSeconds(activeMatch, nowMs);
     const updated = matches.map((m) =>
-      m.id === activeMatch.id ? { ...m, status: 'LIVE' as const } : m
+      m.id === activeMatch.id
+        ? {
+          ...m,
+          status: 'LIVE' as const,
+          clockBaseSeconds: baseSec,
+          clockStartedAt: nowMs,
+          clockPaused: false,
+          currentMinute: Math.floor(baseSec / 60),
+        }
+        : m
     );
     onMatchesUpdate(updated);
     StorageService.saveMatches(updated);
+    setSeconds(baseSec);
     setTimerRunning(true);
     StorageService.logAction(
       currentRole,
       currentRole,
       'BẮT ĐẦU / TIẾP TỤC TRẬN ĐẤU',
       activeMatch.roundLabel,
-      `Bắt đầu hiệp ${activeMatch.half} lúc phút ${Math.floor(seconds / 60)}`
+      `Bắt đầu lúc ${formatClockMMSS(baseSec)}`
     );
   };
 
   const handlePause = () => {
     if (!activeMatch) return;
+    const nowMs = getSyncedNowMs();
+    const hasSyncedAnchor =
+      typeof activeMatch.clockStartedAt === 'number' && activeMatch.clockStartedAt > 0;
+    const finalElapsed = hasSyncedAnchor
+      ? computeMatchElapsedSeconds(activeMatch, nowMs)
+      : Math.max(computeMatchElapsedSeconds(activeMatch, nowMs), seconds);
+
+    const updated = matches.map((m) =>
+      m.id === activeMatch.id
+        ? {
+          ...m,
+          status: 'LIVE' as const,
+          currentMinute: Math.floor(finalElapsed / 60),
+          clockBaseSeconds: finalElapsed,
+          clockStartedAt: undefined,
+          clockPaused: true,
+        }
+        : m
+    );
+    onMatchesUpdate(updated);
+    StorageService.saveMatches(updated);
+    setSeconds(finalElapsed);
     setTimerRunning(false);
     StorageService.logAction(
       currentRole,
       currentRole,
       'TẠM DỪNG TRẬN ĐẤU',
       activeMatch.roundLabel,
-      `Tạm dừng trận đấu ở phút ${Math.floor(seconds / 60)}`
+      `Tạm dừng trận đấu ở ${formatClockMMSS(finalElapsed)}`
     );
   };
 
   const handleSetHalftime = () => {
     if (!activeMatch) return;
     SoundFX.playWhistle();
+    const halfSec = halfDurationMinutes * 60;
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
@@ -224,11 +318,15 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           status: 'HALFTIME' as const,
           half: 2 as const,
           currentMinute: halfDurationMinutes,
+          clockBaseSeconds: halfSec,
+          clockStartedAt: undefined,
+          clockPaused: false,
         }
         : m
     );
     onMatchesUpdate(updated);
     StorageService.saveMatches(updated);
+    setSeconds(halfSec);
     setTimerRunning(false);
   };
 
@@ -237,7 +335,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     SoundFX.playWhistle();
     setTimerRunning(false);
 
-    // If knockout (only in GROUP_KNOCKOUT) and tied -> require penalty shootout modal (Football only)
+    // If knockout (only in GROUP_KNOCKOUT or KNOCKOUT) and tied -> require penalty shootout modal (Football only)
     const isKnockout = !isSingleLeague && activeMatch.round !== 'GROUP';
     const isTied = activeMatch.homeScore === activeMatch.awayScore;
 
@@ -245,6 +343,16 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
       setPenaltyModalOpen(true);
       return;
     }
+
+    const nowMs = getSyncedNowMs();
+    const hasSyncedAnchor =
+      typeof activeMatch.clockStartedAt === 'number' && activeMatch.clockStartedAt > 0;
+    const rawElapsed = hasSyncedAnchor
+      ? computeMatchElapsedSeconds(activeMatch, nowMs)
+      : Math.max(computeMatchElapsedSeconds(activeMatch, nowMs), seconds);
+    const finalElapsed = isSetSport
+      ? rawElapsed
+      : Math.max(rawElapsed, matchDurationMinutes * 60);
 
     const computedWinnerId =
       activeMatch.homeScore > activeMatch.awayScore
@@ -258,7 +366,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         ? {
           ...m,
           status: 'FINISHED' as const,
-          currentMinute: isSetSport ? Math.floor(seconds / 60) : matchDurationMinutes,
+          currentMinute: Math.floor(finalElapsed / 60),
+          clockBaseSeconds: finalElapsed,
+          clockStartedAt: undefined,
+          clockPaused: false,
           ...(computedWinnerId ? { winnerTeamId: computedWinnerId } : {}),
           completedAt: new Date().toISOString(),
         }
@@ -331,19 +442,33 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           ? activeMatch.awayTeamId
           : undefined;
 
-    const updated = matches.map((m) =>
-      m.id === activeMatch.id
-        ? {
-          ...m,
-          status: m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
-          homeScore: summary.homeSetsWon,
-          awayScore: summary.awaySetsWon,
-          sets: summary.normalizedSets,
-          currentSet: setNum,
-          winnerTeamId: nextWinnerId,
-        }
-        : m
-    );
+    const nowMs = getSyncedNowMs();
+    const updated = matches.map((m) => {
+      if (m.id !== activeMatch.id) return m;
+      const shouldAttachStartAnchor =
+        m.status === 'SCHEDULED' ||
+        (m.status === 'LIVE' && !m.clockPaused && !m.clockStartedAt);
+      const elapsedSec = shouldAttachStartAnchor
+        ? Math.max(computeMatchElapsedSeconds(m, nowMs), seconds)
+        : computeMatchElapsedSeconds(m, nowMs);
+      return {
+        ...m,
+        status: m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
+        homeScore: summary.homeSetsWon,
+        awayScore: summary.awaySetsWon,
+        sets: summary.normalizedSets,
+        currentSet: setNum,
+        winnerTeamId: nextWinnerId,
+        currentMinute: Math.floor(elapsedSec / 60),
+        ...(shouldAttachStartAnchor
+          ? {
+            clockBaseSeconds: elapsedSec,
+            clockStartedAt: nowMs,
+            clockPaused: false,
+          }
+          : {}),
+      };
+    });
     onMatchesUpdate(updated);
     StorageService.saveMatches(updated);
   };
@@ -370,11 +495,19 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     const nextSet = Math.min(setConfig.bestOf, activeSetNum + 1);
     const hasMatchWinner = summary.homeSetsWon >= setsToWin || summary.awaySetsWon >= setsToWin;
 
+    const nowMs = getSyncedNowMs();
+    const shouldAttachStartAnchor =
+      activeMatch.status === 'SCHEDULED' ||
+      (activeMatch.status === 'LIVE' && !activeMatch.clockPaused && !activeMatch.clockStartedAt);
+    const elapsedSec = shouldAttachStartAnchor
+      ? Math.max(computeMatchElapsedSeconds(activeMatch, nowMs), seconds)
+      : computeMatchElapsedSeconds(activeMatch, nowMs);
+
     const setEvent: MatchEvent = {
       id: `EV-SET-${Date.now()}`,
       matchId: activeMatch.id,
       type: 'SET_WIN',
-      minute: Math.floor(seconds / 60),
+      minute: Math.floor(elapsedSec / 60),
       teamId: winningTeam?.id || activeMatch.homeTeamId,
       setNumber: activeSetNum,
       setScoreLabel: `${curSet.homePoints}-${curSet.awayPoints}`,
@@ -397,6 +530,14 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
               : summary.awaySetsWon >= setsToWin
                 ? activeMatch.awayTeamId
                 : undefined,
+          currentMinute: Math.floor(elapsedSec / 60),
+          ...(shouldAttachStartAnchor
+            ? {
+              clockBaseSeconds: elapsedSec,
+              clockStartedAt: nowMs,
+              clockPaused: false,
+            }
+            : {}),
           events: [...m.events, setEvent],
         }
         : m
@@ -456,6 +597,13 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
       quickSetsFinishMatch &&
       (summary.homeSetsWon >= setsToWin || summary.awaySetsWon >= setsToWin);
 
+    const nowMs = getSyncedNowMs();
+    const hasSyncedAnchor =
+      typeof activeMatch.clockStartedAt === 'number' && activeMatch.clockStartedAt > 0;
+    const rawElapsed = hasSyncedAnchor
+      ? computeMatchElapsedSeconds(activeMatch, nowMs)
+      : Math.max(computeMatchElapsedSeconds(activeMatch, nowMs), seconds);
+
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
@@ -466,7 +614,21 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           currentSet: Math.min(setConfig.bestOf, Math.max(1, summary.normalizedSets.length)),
           winnerTeamId: winnerId,
           status: shouldFinish ? ('FINISHED' as const) : m.status === 'SCHEDULED' ? ('LIVE' as const) : m.status,
-          ...(shouldFinish ? { completedAt: new Date().toISOString() } : {}),
+          ...(shouldFinish
+            ? {
+              currentMinute: Math.floor(rawElapsed / 60),
+              clockBaseSeconds: rawElapsed,
+              clockStartedAt: undefined,
+              clockPaused: false,
+              completedAt: new Date().toISOString(),
+            }
+            : m.status === 'SCHEDULED'
+              ? {
+                clockBaseSeconds: rawElapsed,
+                clockStartedAt: nowMs,
+                clockPaused: false,
+              }
+              : {}),
         }
         : m
     );
@@ -492,27 +654,33 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     );
   };
 
-  // Chỉnh sửa thời lượng & phút hiện tại của riêng trận đấu đang chọn
+  // Chỉnh sửa thời lượng & đồng hồ (phút:giây) hiện tại của trận đấu và đồng bộ trực tiếp tới mọi thiết bị
   const handleSaveMatchTimeConfig = () => {
     if (!activeMatch) return;
     const validDuration = Math.max(10, Math.min(180, Number(editMatchDurationInput) || 60));
     const validBreak = Math.max(0, Math.min(30, Number(editMatchBreakInput) || 5));
-    const validMinute = Math.max(0, Math.min(validDuration, Number(editMatchCurrentMinInput) || 0));
+    const maxMinCap = isSetSport ? 180 : validDuration;
+    const validMinute = Math.max(0, Math.min(maxMinCap, Math.floor(Number(editMatchCurrentMinInput) || 0)));
+    const validSecond = Math.max(0, Math.min(59, Math.floor(Number(editMatchCurrentSecInput) || 0)));
+    const totalSeconds = validMinute * 60 + validSecond;
+    const isActivelyRunning = activeMatch.status === 'LIVE' && !activeMatch.clockPaused;
+    const nowMs = getSyncedNowMs();
 
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
           ...m,
-          durationMinutes: validDuration,
-          breakDurationMinutes: validBreak,
+          ...(isSetSport ? {} : { durationMinutes: validDuration, breakDurationMinutes: validBreak }),
           currentMinute: validMinute,
+          clockBaseSeconds: totalSeconds,
+          clockStartedAt: isActivelyRunning ? nowMs : undefined,
           half: (validMinute > Math.floor(validDuration / 2) ? 2 : 1) as 1 | 2,
         }
         : m
     );
     onMatchesUpdate(updated);
     StorageService.saveMatches(updated);
-    setSeconds(validMinute * 60);
+    setSeconds(totalSeconds);
     setEventMinute(Math.max(1, validMinute));
     setTimeConfigModalOpen(false);
 
@@ -521,7 +689,9 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
       currentRole,
       'ĐIỀU CHỈNH THỜI GIAN THI ĐẤU TRẬN',
       activeMatch.roundLabel,
-      `Trận #${activeMatch.matchNumber}: Thời lượng ${validDuration}p (2×${Math.floor(validDuration / 2)}p, nghỉ ${validBreak}p), phút đồng hồ ${validMinute}'.`
+      isSetSport
+        ? `Trận #${activeMatch.matchNumber}: Chỉnh đồng hồ thành ${formatClockMMSS(totalSeconds)}.`
+        : `Trận #${activeMatch.matchNumber}: Thời lượng ${validDuration}p (2×${Math.floor(validDuration / 2)}p, nghỉ ${validBreak}p), đồng hồ ${formatClockMMSS(totalSeconds)}.`
     );
   };
 
@@ -551,6 +721,13 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
     };
 
+    const nowMs = getSyncedNowMs();
+    const hasSyncedAnchor =
+      typeof activeMatch.clockStartedAt === 'number' && activeMatch.clockStartedAt > 0;
+    const rawElapsed = hasSyncedAnchor
+      ? computeMatchElapsedSeconds(activeMatch, nowMs)
+      : Math.max(computeMatchElapsedSeconds(activeMatch, nowMs), seconds);
+
     const updated = matches.map((m) =>
       m.id === activeMatch.id
         ? {
@@ -559,7 +736,10 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           homeScore: isHomeForfeit ? 0 : forfeitWinScore,
           awayScore: isHomeForfeit ? forfeitWinScore : 0,
           ...(forfeitSets ? { sets: forfeitSets } : {}),
-          currentMinute: isSetSport ? Math.floor(seconds / 60) : matchDurationMinutes,
+          currentMinute: isSetSport ? Math.floor(rawElapsed / 60) : matchDurationMinutes,
+          clockBaseSeconds: isSetSport ? rawElapsed : matchDurationMinutes * 60,
+          clockStartedAt: undefined,
+          clockPaused: false,
           winnerTeamId: winningTeam?.id,
           isForfeit: true,
           forfeitedTeamId: forfeitTeamId,
@@ -624,12 +804,8 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         : m
     );
 
-    // Update player goals
-    if (player && !isOwnGoal) {
-      player.goals = (player.goals || 0) + 1;
-      if (assist) assist.assists = (assist.assists || 0) + 1;
-      StorageService.saveTeams(teams);
-    }
+    const recalculatedTeams = RankingEngine.recalculatePlayerStatsFromMatches(teams, updated);
+    StorageService.saveTeams(recalculatedTeams);
 
     onMatchesUpdate(updated);
     StorageService.saveMatches(updated);
@@ -789,14 +965,205 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
     triggerCelebration();
   };
 
-  // Post-match Edit with Audit Log (Rule #26)
-  const handleSavePostEdit = () => {
-    if (!activeMatch || !postEditReason) {
-      alert('Vui lòng nhập lý do chỉnh sửa biên bản theo Điều 26!');
+  // Delete/undo an event while match is still ongoing (!FINISHED)
+  const handleDeleteLiveEvent = (evId: string) => {
+    if (!activeMatch || !canEdit || activeMatch.status === 'FINISHED') return;
+    const targetEv = activeMatch.events.find((e) => e.id === evId);
+    if (!targetEv) return;
+
+    const label =
+      targetEv.type === 'GOAL'
+        ? `bàn thắng của ${targetEv.playerName || 'cầu thủ'} (${targetEv.minute}')`
+        : targetEv.type === 'CARD'
+          ? `thẻ phạt của ${targetEv.playerName || 'cầu thủ'} (${targetEv.minute}')`
+          : `sự kiện phút ${targetEv.minute}'`;
+    if (!window.confirm(`Xóa ${label} khỏi trận đấu? Tỷ số & thống kê cầu thủ sẽ tự cập nhật lại.`)) {
       return;
     }
 
-    const synced = KnockoutEngine.generateOrUpdateBracket(teams, matches);
+    const updatedMatches = matches.map((m) => {
+      if (m.id !== activeMatch.id) return m;
+      const nextEvents = m.events.filter((e) => e.id !== evId);
+      let nextHomeScore = m.homeScore;
+      let nextAwayScore = m.awayScore;
+      if (targetEv.type === 'GOAL') {
+        if (targetEv.teamId === m.homeTeamId) nextHomeScore = Math.max(0, m.homeScore - 1);
+        else if (targetEv.teamId === m.awayTeamId) nextAwayScore = Math.max(0, m.awayScore - 1);
+      }
+      return {
+        ...m,
+        homeScore: nextHomeScore,
+        awayScore: nextAwayScore,
+        events: nextEvents,
+      };
+    });
+
+    const recalculatedTeams = RankingEngine.recalculatePlayerStatsFromMatches(teams, updatedMatches);
+    if (targetEv.type === 'CARD' && !isSetSport) {
+      DisciplineEngine.evaluateAllPlayers(
+        recalculatedTeams,
+        updatedMatches,
+        tournament?.formatType || 'SINGLE_LEAGUE'
+      );
+    }
+    StorageService.saveTeams(recalculatedTeams);
+
+    const finalMatches = isSingleLeague
+      ? updatedMatches
+      : KnockoutEngine.generateOrUpdateBracket(recalculatedTeams, updatedMatches);
+    onMatchesUpdate(finalMatches);
+    StorageService.saveMatches(finalMatches);
+
+    StorageService.logAction(
+      currentRole,
+      currentRole,
+      'XÓA / HOÀN TÁC SỰ KIỆN TRẬN ĐẤU',
+      activeMatch.roundLabel,
+      `Đã xóa ${label} (Trận #${activeMatch.matchNumber}).`
+    );
+  };
+
+  // Post-match Edit with Audit Log (Rule #26)
+  const handleOpenPostEdit = () => {
+    if (!activeMatch) return;
+    setPostEditHomeScore(activeMatch.homeScore);
+    setPostEditAwayScore(activeMatch.awayScore);
+    setPostEditEvents((activeMatch.events || []).map((ev) => ({ ...ev })));
+    setPostEditAddTeamId(activeMatch.homeTeamId);
+    setPostEditAddScorerId('');
+    setPostEditAddAssistId('');
+    setPostEditAddMinute(Math.max(1, Math.min(matchDurationMinutes, Math.floor(seconds / 60) || 1)));
+    setPostEditAddOwnGoal(false);
+    setPostEditReason('');
+    setPostEditModalOpen(true);
+  };
+
+  const handlePostEditRemoveGoal = (evId: string) => {
+    if (!activeMatch) return;
+    const removed = postEditEvents.find((e) => e.id === evId);
+    setPostEditEvents((prev) => prev.filter((e) => e.id !== evId));
+    if (removed && removed.type === 'GOAL') {
+      if (removed.teamId === activeMatch.homeTeamId) {
+        setPostEditHomeScore((s) => Math.max(0, s - 1));
+      } else if (removed.teamId === activeMatch.awayTeamId) {
+        setPostEditAwayScore((s) => Math.max(0, s - 1));
+      }
+    }
+  };
+
+  const handlePostEditChangeScorer = (evId: string, newPlayerId: string) => {
+    setPostEditEvents((prev) =>
+      prev.map((ev) => {
+        if (ev.id !== evId) return ev;
+        const scoringTeam = ev.teamId === homeTeam?.id ? homeTeam : awayTeam;
+        const pl = scoringTeam?.players.find((p) => p.id === newPlayerId);
+        return {
+          ...ev,
+          playerId: pl ? pl.id : undefined,
+          playerName: pl ? pl.name : 'Cầu thủ',
+        };
+      })
+    );
+  };
+
+  const handlePostEditChangeAssist = (evId: string, newAssistId: string) => {
+    setPostEditEvents((prev) =>
+      prev.map((ev) => {
+        if (ev.id !== evId) return ev;
+        const scoringTeam = ev.teamId === homeTeam?.id ? homeTeam : awayTeam;
+        const assistPl = scoringTeam?.players.find((p) => p.id === newAssistId);
+        return {
+          ...ev,
+          assistPlayerId: assistPl ? assistPl.id : undefined,
+          assistPlayerName: assistPl ? assistPl.name : undefined,
+        };
+      })
+    );
+  };
+
+  const handlePostEditAddGoal = () => {
+    if (!activeMatch || !postEditAddTeamId) return;
+    const scoringTeam = postEditAddTeamId === homeTeam?.id ? homeTeam : awayTeam;
+    const hasRoster = (scoringTeam?.players.length || 0) > 0;
+    if (hasRoster && !postEditAddScorerId) {
+      alert('Vui lòng chọn cầu thủ ghi bàn!');
+      return;
+    }
+    const pl = scoringTeam?.players.find((p) => p.id === postEditAddScorerId);
+    const assistPl = scoringTeam?.players.find((p) => p.id === postEditAddAssistId);
+    const validMin = Math.max(1, Math.min(180, Math.floor(Number(postEditAddMinute) || 1)));
+
+    const newGoalEv: MatchEvent = {
+      id: `EV-POST-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      matchId: activeMatch.id,
+      type: 'GOAL',
+      minute: validMin,
+      teamId: postEditAddTeamId,
+      playerId: pl?.id,
+      playerName: pl?.name || 'Cầu thủ',
+      assistPlayerId: assistPl?.id,
+      assistPlayerName: assistPl?.name,
+      isOwnGoal: postEditAddOwnGoal,
+      timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    setPostEditEvents((prev) => [...prev, newGoalEv]);
+    if (postEditAddTeamId === activeMatch.homeTeamId) {
+      setPostEditHomeScore((s) => s + 1);
+    } else if (postEditAddTeamId === activeMatch.awayTeamId) {
+      setPostEditAwayScore((s) => s + 1);
+    }
+    setPostEditAddScorerId('');
+    setPostEditAddAssistId('');
+    setPostEditAddOwnGoal(false);
+  };
+
+  const handleSavePostEdit = () => {
+    if (!activeMatch || !postEditReason.trim()) {
+      alert('Vui lòng nhập lý do chỉnh sửa biên bản!');
+      return;
+    }
+
+    const oldScoreLabel = `${activeMatch.homeScore} - ${activeMatch.awayScore}`;
+    const validHome = Math.max(0, Math.floor(Number(postEditHomeScore) || 0));
+    const validAway = Math.max(0, Math.floor(Number(postEditAwayScore) || 0));
+
+    const computedWinnerId =
+      validHome > validAway
+        ? activeMatch.homeTeamId
+        : validAway > validHome
+          ? activeMatch.awayTeamId
+          : activeMatch.penaltyShootout
+            ? activeMatch.penaltyShootout.homeScore > activeMatch.penaltyShootout.awayScore
+              ? activeMatch.homeTeamId
+              : activeMatch.awayTeamId
+            : undefined;
+
+    const updatedMatches = matches.map((m) =>
+      m.id === activeMatch.id
+        ? {
+          ...m,
+          homeScore: validHome,
+          awayScore: validAway,
+          events: postEditEvents,
+          winnerTeamId: computedWinnerId,
+        }
+        : m
+    );
+
+    const recalculatedTeams = RankingEngine.recalculatePlayerStatsFromMatches(teams, updatedMatches);
+    if (!isSetSport) {
+      DisciplineEngine.evaluateAllPlayers(
+        recalculatedTeams,
+        updatedMatches,
+        tournament?.formatType || 'SINGLE_LEAGUE'
+      );
+    }
+    StorageService.saveTeams(recalculatedTeams);
+
+    const synced = isSingleLeague
+      ? updatedMatches
+      : KnockoutEngine.generateOrUpdateBracket(recalculatedTeams, updatedMatches);
     onMatchesUpdate(synced);
     StorageService.saveMatches(synced);
 
@@ -805,19 +1172,13 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
       currentRole,
       'CHỈNH SỬA BIÊN BẢN TRẬN ĐÃ KẾT THÚC (POST-EDIT)',
       activeMatch.roundLabel,
-      `Tỷ số mới: ${activeMatch.homeScore} - ${activeMatch.awayScore}`,
-      postEditReason
+      `Tỷ số: ${oldScoreLabel} ➔ ${validHome} - ${validAway} (đã đồng bộ lại bàn thắng/kiến tạo cầu thủ).`,
+      postEditReason.trim()
     );
 
     setPostEditModalOpen(false);
     setPostEditReason('');
-    alert('Biên bản đã được cập nhật và ghi nhận vào Audit Log hệ thống.');
-  };
-
-  const formatMinSec = (totalSec: number) => {
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    alert('Biên bản, cầu thủ ghi bàn và Audit Log đã được cập nhật đồng bộ.');
   };
 
   if (!activeMatch) {
@@ -858,12 +1219,22 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                     {(m.venueName ? m.venueName.match(/Sân\s*\d+/i)?.[0] || m.venueName.split(' - ')[0] : 'Sân 1').toUpperCase()}
                   </span>
                 </div>
-                {m.status === 'LIVE' && (
-                  <span className="flex items-center gap-1 text-red-400 font-black animate-pulse">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-                    LIVE
-                  </span>
-                )}
+                {m.status === 'LIVE' && (() => {
+                  const stripSec =
+                    isSelected
+                      ? seconds
+                      : computeMatchElapsedSeconds(m, getSyncedNowMs());
+                  return m.clockPaused ? (
+                    <span className="flex items-center gap-1 text-amber-300 font-black font-mono text-[9px]">
+                      ⏸ {formatClockMMSS(stripSec)}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-red-400 font-black animate-pulse font-mono text-[9px]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                      LIVE {formatClockMMSS(stripSec)}
+                    </span>
+                  );
+                })()}
                 {m.status === 'FINISHED' && (
                   <span className="text-emerald-400 font-extrabold">FT</span>
                 )}
@@ -917,7 +1288,13 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {activeMatch.status === 'LIVE' && (
+            {activeMatch.status === 'LIVE' && activeMatch.clockPaused && (
+              <span className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-950 border-2 border-amber-200 px-3.5 py-1 rounded-full font-black text-xs shadow-lg shadow-amber-500/40">
+                <Pause className="w-3.5 h-3.5 fill-current" />
+                {isSetSport ? `TẠM DỪNG (SET ${activeSetNum})` : `TẠM DỪNG (HIỆP ${activeMatch.half})`}
+              </span>
+            )}
+            {activeMatch.status === 'LIVE' && !activeMatch.clockPaused && (
               <span className="inline-flex items-center gap-1.5 bg-red-600 text-white border-2 border-red-300 px-3.5 py-1 rounded-full font-black animate-pulse text-xs shadow-lg shadow-red-600/40">
                 <span className="w-2.5 h-2.5 rounded-full bg-white"></span>
                 {isSetSport ? `ĐANG DIỄN RA (SET ${activeSetNum})` : `ĐANG DIỄN RA (HIỆP ${activeMatch.half})`}
@@ -957,9 +1334,9 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
             {/* Post match edit button for Organizer (Rule 26) */}
             {activeMatch.status === 'FINISHED' && canEdit && (
               <button
-                onClick={() => setPostEditModalOpen(true)}
+                onClick={handleOpenPostEdit}
                 className="ml-2 flex items-center gap-1.5 text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-3 py-1 rounded-lg border border-amber-400/50 transition-colors shadow-sm cursor-pointer"
-                title="Sửa biên bản sau trận theo Điều 26"
+                title="Sửa biên bản sau trận (tỷ số & cầu thủ ghi bàn)"
               >
                 <FileEdit className="w-3.5 h-3.5" />
                 <span>Sửa Biên Bản (Audit)</span>
@@ -1015,16 +1392,85 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
             {/* Score & Live Clock Center (2 columns on desktop, perfectly centered) */}
             <div className="col-span-1 md:col-span-2 flex flex-col items-center justify-center my-4 md:my-0">
 
-              {/* Live Digital Clock Badge */}
-              <div className="relative mb-2 group">
-                <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 opacity-70 blur-md group-hover:opacity-100 transition duration-300"></div>
-                <div className="relative bg-[#030c18] px-5 sm:px-6 py-1.5 rounded-full border-2 border-emerald-400 flex items-center gap-2 shadow-2xl">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-                  <span className="text-emerald-300 font-mono text-sm sm:text-xl font-black tracking-widest drop-shadow-[0_0_12px_rgba(52,211,153,0.9)]">
-                    {formatMinSec(seconds)}
-                  </span>
-                </div>
-              </div>
+              {/* Live Digital Clock Badge (Đồng bộ thời gian thực qua máy chủ cho mọi bên xem) */}
+              {(() => {
+                const isClockRunning = activeMatch.status === 'LIVE' && !activeMatch.clockPaused;
+                const isClockPaused = activeMatch.status === 'LIVE' && Boolean(activeMatch.clockPaused);
+                const statePrefix = isClockRunning
+                  ? 'ĐÃ ĐẤU'
+                  : isClockPaused
+                    ? 'TẠM DỪNG'
+                    : activeMatch.status === 'HALFTIME'
+                      ? 'NGHỈ HIỆP'
+                      : activeMatch.status === 'FINISHED'
+                        ? 'TỔNG GIỜ'
+                        : activeMatch.status === 'POSTPONED'
+                          ? 'HOÃN TRẬN'
+                          : activeMatch.status === 'CANCELLED'
+                            ? 'HỦY TRẬN'
+                            : 'CHƯA ĐẤU';
+                const badgeBorderClass = isClockRunning
+                  ? 'border-emerald-400'
+                  : isClockPaused || activeMatch.status === 'HALFTIME'
+                    ? 'border-amber-400'
+                    : activeMatch.status === 'FINISHED'
+                      ? 'border-sky-400'
+                      : 'border-slate-500';
+                const glowClass = isClockRunning
+                  ? 'from-emerald-500 to-teal-400 opacity-70'
+                  : isClockPaused || activeMatch.status === 'HALFTIME'
+                    ? 'from-amber-500 to-orange-400 opacity-50'
+                    : 'from-slate-500 to-blue-500 opacity-25';
+                const textClass = isClockRunning
+                  ? 'text-emerald-300 drop-shadow-[0_0_12px_rgba(52,211,153,0.9)]'
+                  : isClockPaused || activeMatch.status === 'HALFTIME'
+                    ? 'text-amber-300'
+                    : activeMatch.status === 'FINISHED'
+                      ? 'text-sky-200'
+                      : 'text-slate-200';
+
+                return (
+                  <div className="relative mb-2 group flex flex-col items-center">
+                    <div className={`relative ${canEdit && activeMatch.status !== 'FINISHED' ? 'cursor-pointer' : ''}`}
+                      onClick={() => {
+                        if (!canEdit || activeMatch.status === 'FINISHED') return;
+                        setEditMatchDurationInput(matchDurationMinutes);
+                        setEditMatchBreakInput(breakDurationMinutes);
+                        setEditMatchCurrentMinInput(Math.floor(seconds / 60));
+                        setEditMatchCurrentSecInput(seconds % 60);
+                        setTimeConfigModalOpen(true);
+                      }}
+                      title={canEdit && activeMatch.status !== 'FINISHED' ? 'Bấm để chỉnh đồng hồ thời gian trận' : 'Thời gian thi đấu đồng bộ trực tiếp'}
+                    >
+                      <div className={`absolute -inset-1 rounded-full bg-gradient-to-r ${glowClass} blur-md group-hover:opacity-100 transition duration-300`}></div>
+                      <div className={`relative bg-[#030c18] px-4 sm:px-5 py-1.5 rounded-full border-2 ${badgeBorderClass} flex items-center gap-2 shadow-2xl`}>
+                        {isClockRunning ? (
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0"></span>
+                        ) : (
+                          <Clock className={`w-3.5 h-3.5 shrink-0 ${isClockPaused || activeMatch.status === 'HALFTIME' ? 'text-amber-400' : 'text-sky-300'}`} />
+                        )}
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 whitespace-nowrap">
+                          {statePrefix}
+                        </span>
+                        <span className={`font-mono text-sm sm:text-xl font-black tracking-widest ${textClass}`}>
+                          {formatClockMMSS(seconds)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="mt-1.5 text-[10px] font-semibold text-slate-300/90 flex flex-wrap items-center justify-center gap-1.5 text-center">
+                      <span className="text-cyan-200 font-mono font-bold">
+                        Lịch: {activeMatch.time} • {activeMatch.date}
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span>
+                        {isSetSport
+                          ? `Set ${activeSetNum}/${setConfig.bestOf}`
+                          : `Hiệp ${activeMatch.half} (${halfDurationMinutes}p/hiệp)`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="mb-2 text-[10px] font-bold text-cyan-200/90 bg-cyan-950/70 border border-cyan-500/40 px-2.5 py-0.5 rounded-full text-center">
                 {isSetSport
                   ? `TỶ SỐ VÁN / SET (BO${setConfig.bestOf} • ${setConfig.pointsPerSet}đ${setConfig.decidingSetPoints !== setConfig.pointsPerSet ? `, Set cuối ${setConfig.decidingSetPoints}đ` : ''})`
@@ -1208,7 +1654,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 <div className="md:col-span-1 flex md:flex-col items-center justify-center gap-1.5 text-center">
                   <span className="text-xs font-black text-slate-400">SET {activeSetNum}</span>
                   <span className="text-[10px] font-mono text-cyan-300">
-                    /{activeSetNum >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet}đ
+                    /{setConfig.bestOf > 1 && activeSetNum >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet}đ
                   </span>
                 </div>
 
@@ -1249,7 +1695,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 <span className="text-[11px] text-slate-300">
                   {curSetWinner
                     ? `✓ Set ${activeSetNum} đã đủ điều kiện thắng cho ${curSetWinner === 'HOME' ? homeTeam?.shortName : awayTeam?.shortName} (${curSet.homePoints}-${curSet.awayPoints}).`
-                    : `Đang chấm điểm Set ${activeSetNum} (mục tiêu ${activeSetNum >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet}đ, cách biệt 2đ).`}
+                    : `Đang chấm điểm Set ${activeSetNum} (mục tiêu ${setConfig.bestOf > 1 && activeSetNum >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet}đ${setConfig.winByTwo ? ', cách biệt 2đ' : ', chạm điểm thắng'}${setConfig.maxPointCap ? `, trần ${setConfig.maxPointCap}đ` : ''}).`}
                 </span>
                 <div className="flex flex-wrap items-center gap-2">
                   {!matchHasWinner && (
@@ -1284,13 +1730,17 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
 
             {/* Timer controls */}
             <div className="flex flex-wrap items-center gap-2.5">
-              {activeMatch.status !== 'LIVE' ? (
+              {activeMatch.status !== 'LIVE' || activeMatch.clockPaused ? (
                 <button
                   onClick={handleStartResume}
                   className="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-xs sm:text-sm shadow-xl shadow-emerald-500/35 border border-emerald-300 ring-2 ring-emerald-400/20 active:scale-95 transition-all cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-white" />
-                  <span>{activeMatch.status === 'SCHEDULED' ? 'Bắt Đầu Trận' : 'Tiếp Tục'}</span>
+                  <span>
+                    {activeMatch.status === 'SCHEDULED' || activeMatch.status === 'CHECKING'
+                      ? 'Bắt Đầu Trận'
+                      : 'Tiếp Tục'}
+                  </span>
                 </button>
               ) : (
                 <button
@@ -1372,7 +1822,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                       <span>Thay Người</span>
                     </button>
 
-                    {/* Knockout Penalty Shootout Button (chỉ hiện khi thể thức GROUP_KNOCKOUT) */}
+                    {/* Knockout Penalty Shootout Button (chỉ hiện khi thể thức GROUP_KNOCKOUT hoặc KNOCKOUT) */}
                     {!isSingleLeague && activeMatch.round !== 'GROUP' && (
                       <button
                         onClick={() => setPenaltyModalOpen(true)}
@@ -1382,23 +1832,28 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                         <span>Luân Lưu 6m</span>
                       </button>
                     )}
-
-                    {/* Chỉnh Thời Gian Thi Đấu Riêng Của Trận */}
-                    <button
-                      onClick={() => {
-                        setEditMatchDurationInput(matchDurationMinutes);
-                        setEditMatchBreakInput(breakDurationMinutes);
-                        setEditMatchCurrentMinInput(Math.floor(seconds / 60));
-                        setTimeConfigModalOpen(true);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-200 font-bold text-xs border border-cyan-500/50 active:scale-95 transition-all cursor-pointer"
-                      title="Chỉnh sửa thời lượng trận (phút) và phút đồng hồ hiện tại"
-                    >
-                      <Clock className="w-4 h-4 text-cyan-300" />
-                      <span>Sửa Thời Gian ({matchDurationMinutes}p)</span>
-                    </button>
                   </>
                 )}
+
+                {/* Chỉnh Đồng Hồ & Thời Gian Trận (Hỗ trợ tất cả các môn) */}
+                <button
+                  onClick={() => {
+                    setEditMatchDurationInput(matchDurationMinutes);
+                    setEditMatchBreakInput(breakDurationMinutes);
+                    setEditMatchCurrentMinInput(Math.floor(seconds / 60));
+                    setEditMatchCurrentSecInput(seconds % 60);
+                    setTimeConfigModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-200 font-bold text-xs border border-cyan-500/50 active:scale-95 transition-all cursor-pointer"
+                  title="Chỉnh đồng hồ (phút:giây) và thời lượng trận đồng bộ cho mọi thiết bị"
+                >
+                  <Clock className="w-4 h-4 text-cyan-300" />
+                  <span>
+                    {isSetSport
+                      ? `Chỉnh Đồng Hồ (${formatClockMMSS(seconds)})`
+                      : `Chỉnh Thời Gian (${formatClockMMSS(seconds)} / ${matchDurationMinutes}p)`}
+                  </span>
+                </button>
 
                 {/* Forfeit Button */}
                 <button
@@ -1438,7 +1893,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
           <div className="mb-4 p-2.5 rounded-lg bg-red-950/60 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
             <span>
-              Cảnh báo kỷ luật Điều 11 &amp; 12: Có cầu thủ bị treo giò 🔒 (không được phép đăng ký vào sân hoặc ghi bàn).
+              Cảnh báo kỷ luật: Có cầu thủ bị treo giò 🔒 (không được phép đăng ký vào sân hoặc ghi bàn).
             </span>
           </div>
         )}
@@ -1467,7 +1922,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                     </div>
 
                     <div className="flex-1 text-xs">
-                      <div className="flex items-center justify-between font-bold text-white">
+                      <div className="flex items-center justify-between gap-2 font-bold text-white">
                         <span className="flex items-center gap-1.5">
                           {ev.type === 'GOAL' && '⚽ BÀN THẮNG!'}
                           {ev.type === 'SET_WIN' && `${sportMeta.icon} CHỐT SET ${ev.setNumber || 1}${ev.setScoreLabel ? ` (${ev.setScoreLabel})` : ''}`}
@@ -1480,7 +1935,21 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                           {ev.type === 'SUBSTITUTION' && '🔄 THAY NGƯỜI'}
                           {ev.type === 'NOTE' && '⚖️ QUYẾT ĐỊNH TRỌNG TÀI / BTC'}
                         </span>
-                        <span className="text-[10px] text-slate-400">{evTeam?.shortName}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-slate-400">{evTeam?.shortName}</span>
+                          {canEdit &&
+                            activeMatch.status !== 'FINISHED' &&
+                            (ev.type === 'GOAL' || ev.type === 'CARD' || ev.type === 'SUBSTITUTION') && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLiveEvent(ev.id)}
+                                className="p-1 rounded-md bg-rose-950/70 hover:bg-rose-800 text-rose-300 border border-rose-500/40 transition-colors cursor-pointer"
+                                title="Xóa / hoàn tác sự kiện này"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                        </div>
                       </div>
 
                       {ev.type === 'SET_WIN' && (
@@ -1650,7 +2119,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-800">
             <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <span>⚠️</span> Phạt Thẻ Trọng Tài {isSingleLeague ? '(Quy Chế CTUT)' : '(Điều 11 & 12)'}
+              <span>⚠️</span> Phạt Thẻ Trọng Tài {isSingleLeague ? '(Quy Chế CTUT)' : ''}
             </h3>
             {isSingleLeague && (
               <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
@@ -1768,7 +2237,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-800">
             <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <span>🔄</span> Thay Người (Không Giới Hạn - Điều 6.2)
+              <span>🔄</span> Thay Người (Không Giới Hạn)
             </h3>
 
             {/* Team Picker */}
@@ -1859,7 +2328,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-800">
             <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <span>🥅</span> Luân Lưu 6m - Phân Định Thắng Thua (Điều 8)
+              <span>🥅</span> Luân Lưu 6m - Phân Định Thắng Thua
             </h3>
             <p className="text-xs text-purple-800 bg-purple-50 p-2.5 rounded-xl border border-purple-200">
               Trận đấu knockout hòa sau 40 phút chính thức: Không đá hiệp phụ, tiến hành đá luân lưu 6m để xác định đội đi tiếp.
@@ -1913,80 +2382,271 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
       )}
 
       {/* MODAL 5: Post-Match Edit with Audit Log (Rule #26) */}
-      {postEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-800">
-            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <FileEdit className="w-5 h-5 text-amber-500" />
-              Chỉnh Sửa Dữ Liệu Sau Trận Đấu (Điều 26)
-            </h3>
-            <p className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
-              Quy định nghiêm ngặt: Trận đấu đã FINISHED. Mọi chỉnh sửa bắt buộc phải ghi rõ lý do và được lưu trữ vĩnh viễn trong Audit Log của BTC.
-            </p>
+      {postEditModalOpen && (() => {
+        const draftGoalEvents = postEditEvents.filter((e) => e.type === 'GOAL');
+        const goalHomeCount = draftGoalEvents.filter((e) => e.teamId === activeMatch.homeTeamId).length;
+        const goalAwayCount = draftGoalEvents.filter((e) => e.teamId === activeMatch.awayTeamId).length;
+        const scoreDiffersFromEvents = !isSetSport && (goalHomeCount !== postEditHomeScore || goalAwayCount !== postEditAwayScore);
+        const addGoalTeam = postEditAddTeamId === homeTeam?.id ? homeTeam : awayTeam;
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-slate-700 font-bold block mb-1">Tỷ số {homeTeam?.shortName}</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={activeMatch.homeScore}
-                  onChange={(e) => {
-                    activeMatch.homeScore = Number(e.target.value);
-                    onMatchesUpdate([...matches]);
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl p-2 font-mono font-bold focus:bg-white focus:border-blue-500"
-                />
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-150">
+            <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-800">
+              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <FileEdit className="w-5 h-5 text-amber-500" />
+                Chỉnh Sửa Biên Bản Sau Trận Đấu
+              </h3>
+              <p className="text-xs text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                Trận đấu đã FINISHED. Sửa tỷ số và/hoặc danh sách bàn thắng bên dưới — hệ thống tự đồng bộ lại BXH, Vua phá lưới &amp; ghi Audit Log. Bấm Hủy sẽ giữ nguyên dữ liệu cũ.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-700 font-bold block mb-1">Tỷ số {homeTeam?.shortName}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={postEditHomeScore}
+                    onChange={(e) => setPostEditHomeScore(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl p-2 font-mono font-bold focus:bg-white focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-700 font-bold block mb-1">Tỷ số {awayTeam?.shortName}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={postEditAwayScore}
+                    onChange={(e) => setPostEditAwayScore(Math.max(0, Number(e.target.value) || 0))}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl p-2 font-mono font-bold focus:bg-white focus:border-blue-500"
+                  />
+                </div>
               </div>
 
+              {!isSetSport && (
+                <div className="space-y-3 border border-slate-200 rounded-2xl p-3.5 bg-slate-50/70">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-xs font-black text-slate-800">
+                      ⚽ Danh Sách Cầu Thủ Ghi Bàn ({goalHomeCount} - {goalAwayCount})
+                    </span>
+                    {scoreDiffersFromEvents && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPostEditHomeScore(goalHomeCount);
+                          setPostEditAwayScore(goalAwayCount);
+                        }}
+                        className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 cursor-pointer"
+                      >
+                        Khớp tỷ số ({goalHomeCount}-{goalAwayCount})
+                      </button>
+                    )}
+                  </div>
+
+                  {scoreDiffersFromEvents && (
+                    <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2">
+                      ⚠️ Tổng bàn thắng ghi nhận ({goalHomeCount}-{goalAwayCount}) khác với tỷ số đang nhập ({postEditHomeScore}-{postEditAwayScore}). Xóa bàn bấm dư hoặc thêm bàn thiếu bên dưới để Vua phá lưới đúng tuyệt đối.
+                    </div>
+                  )}
+
+                  {draftGoalEvents.length === 0 ? (
+                    <div className="text-[11px] text-slate-500 italic py-2 text-center">
+                      Chưa có sự kiện bàn thắng nào trong biên bản.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {draftGoalEvents.map((ev) => {
+                        const evTeam = ev.teamId === homeTeam?.id ? homeTeam : awayTeam;
+                        const teamPlayers = evTeam?.players || [];
+                        return (
+                          <div
+                            key={ev.id}
+                            className="p-2.5 rounded-xl bg-white border border-slate-200 flex flex-col gap-1.5 text-xs"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 font-bold">
+                                <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-mono text-[10px]">
+                                  {ev.minute}&apos;
+                                </span>
+                                <span className="text-slate-900">{evTeam?.shortName}</span>
+                                {ev.isOwnGoal && (
+                                  <span className="text-[10px] text-rose-600 font-bold">(Phản lưới)</span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handlePostEditRemoveGoal(ev.id)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold cursor-pointer"
+                                title="Xóa bàn thắng này (tự giảm tỷ số)"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Xóa bàn</span>
+                              </button>
+                            </div>
+
+                            {teamPlayers.length > 0 && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                <select
+                                  value={ev.playerId || ''}
+                                  onChange={(e) => handlePostEditChangeScorer(ev.id, e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-800"
+                                >
+                                  <option value="">-- Ghi bàn: {ev.playerName || 'Cầu thủ'} --</option>
+                                  {teamPlayers.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      #{p.jerseyNumber} {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={ev.assistPlayerId || ''}
+                                  onChange={(e) => handlePostEditChangeAssist(ev.id, e.target.value)}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700"
+                                >
+                                  <option value="">-- Không kiến tạo --</option>
+                                  {teamPlayers.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      KT: #{p.jerseyNumber} {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Quick Add Missing Goal inside Post-Edit */}
+                  <div className="pt-2.5 border-t border-slate-200 space-y-2">
+                    <div className="text-[11px] font-bold text-slate-700">➕ Thêm bàn thắng còn thiếu</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPostEditAddTeamId(homeTeam?.id || '');
+                          setPostEditAddScorerId('');
+                          setPostEditAddAssistId('');
+                        }}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                          postEditAddTeamId === homeTeam?.id
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {homeTeam?.shortName}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPostEditAddTeamId(awayTeam?.id || '');
+                          setPostEditAddScorerId('');
+                          setPostEditAddAssistId('');
+                        }}
+                        className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                          postEditAddTeamId === awayTeam?.id
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'bg-white text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {awayTeam?.shortName}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      <select
+                        value={postEditAddScorerId}
+                        onChange={(e) => setPostEditAddScorerId(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] text-slate-800"
+                      >
+                        <option value="">-- Chọn người ghi bàn --</option>
+                        {(addGoalTeam?.players || []).map((p) => (
+                          <option key={p.id} value={p.id}>
+                            #{p.jerseyNumber} {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={postEditAddAssistId}
+                        onChange={(e) => setPostEditAddAssistId(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] text-slate-700"
+                      >
+                        <option value="">-- Kiến tạo (tùy chọn) --</option>
+                        {(addGoalTeam?.players || []).map((p) => (
+                          <option key={p.id} value={p.id}>
+                            #{p.jerseyNumber} {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-slate-600">Phút:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={180}
+                          value={postEditAddMinute}
+                          onChange={(e) => setPostEditAddMinute(Number(e.target.value))}
+                          className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-mono"
+                        />
+                        <label className="flex items-center gap-1 text-[11px] text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={postEditAddOwnGoal}
+                            onChange={(e) => setPostEditAddOwnGoal(e.target.checked)}
+                            className="rounded border-slate-300"
+                          />
+                          <span>Phản lưới</span>
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handlePostEditAddGoal}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer"
+                      >
+                        + Thêm Bàn
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
-                <label className="text-xs text-slate-700 font-bold block mb-1">Tỷ số {awayTeam?.shortName}</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={activeMatch.awayScore}
-                  onChange={(e) => {
-                    activeMatch.awayScore = Number(e.target.value);
-                    onMatchesUpdate([...matches]);
-                  }}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl p-2 font-mono font-bold focus:bg-white focus:border-blue-500"
-                />
+                <label className="text-xs font-bold text-slate-800 block mb-1">
+                  Lý Do Chỉnh Sửa (Bắt buộc)
+                </label>
+                <textarea
+                  rows={2}
+                  value={postEditReason}
+                  onChange={(e) => setPostEditReason(e.target.value)}
+                  placeholder="VD: Trọng tài bấm dư 1 bàn phút 35, đã điều chỉnh lại biên bản..."
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 text-xs rounded-xl p-2.5 focus:border-amber-500 focus:bg-white focus:outline-none"
+                ></textarea>
               </div>
-            </div>
 
-            <div>
-              <label className="text-xs font-bold text-slate-800 block mb-1">
-                Lý Do Chỉnh Sửa (Bắt buộc theo Điều 26)
-              </label>
-              <textarea
-                rows={3}
-                value={postEditReason}
-                onChange={(e) => setPostEditReason(e.target.value)}
-                placeholder="VD: Nhập sai biên bản giấy do trọng tài ghi nhầm phút 35..."
-                className="w-full bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 text-xs rounded-xl p-2.5 focus:border-amber-500 focus:bg-white focus:outline-none"
-              ></textarea>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setPostEditModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-bold border border-slate-200 transition-all cursor-pointer"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={handleSavePostEdit}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-xs font-black shadow-md shadow-amber-500/25 transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <FileEdit className="w-3.5 h-3.5" />
-                <span>Xác Nhận &amp; Ghi Audit Log</span>
-              </button>
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPostEditModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-bold border border-slate-200 transition-all cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSavePostEdit}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-xs font-black shadow-md shadow-amber-500/25 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <FileEdit className="w-3.5 h-3.5" />
+                  <span>Xác Nhận &amp; Ghi Audit Log</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL 6: Forfeit */}
       {forfeitModalOpen && (
@@ -2074,72 +2734,110 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
         </div>
       )}
 
-      {/* MODAL 7: Edit Match Duration & Clock Minute */}
+      {/* MODAL 7: Edit Match Duration & Clock Time (Synced Across All Devices) */}
       {timeConfigModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-800">
             <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
               <Clock className="w-5 h-5 text-blue-600" />
-              Chỉnh Thời Gian Thi Đấu Trận #{activeMatch.matchNumber}
+              Chỉnh Đồng Hồ Trận #{activeMatch.matchNumber}
             </h3>
             <p className="text-xs text-slate-600 bg-blue-50 p-2.5 rounded-xl border border-blue-200">
-              Cho phép tùy chỉnh tổng thời lượng (phút), thời gian nghỉ giữa hiệp và phút đồng hồ hiện tại cho riêng trận này.
+              {isSetSport
+                ? `Điều chỉnh phút & giây đồng hồ trận ${sportMeta.label}. Thời gian mới sẽ tự động đồng bộ để cả hai đội và khán giả xem khớp nhau.`
+                : 'Tùy chỉnh tổng thời lượng (phút), thời gian nghỉ giữa hiệp và phút:giây đồng hồ hiện tại. Dữ liệu đồng bộ trực tiếp tới tất cả người xem.'}
             </p>
 
-            <div>
-              <span className="text-xs font-bold text-slate-700 block mb-1.5">Chọn nhanh thời lượng:</span>
-              <div className="flex flex-wrap gap-1.5">
-                {[40, 50, 60, 70].map((mins) => (
-                  <button
-                    key={mins}
-                    type="button"
-                    onClick={() => setEditMatchDurationInput(mins)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${editMatchDurationInput === mins
-                        ? 'bg-blue-600 border-blue-700 text-white'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                  >
-                    {mins}p (2×{Math.floor(mins / 2)}p)
-                  </button>
-                ))}
+            {!isSetSport && (
+              <div>
+                <span className="text-xs font-bold text-slate-700 block mb-1.5">Chọn nhanh thời lượng:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[40, 50, 60, 70].map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => setEditMatchDurationInput(mins)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${editMatchDurationInput === mins
+                          ? 'bg-blue-600 border-blue-700 text-white'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                    >
+                      {mins}p (2×{Math.floor(mins / 2)}p)
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="grid grid-cols-3 gap-2.5">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Tổng phút ({Math.floor((editMatchDurationInput || 60) / 2)}p×2)
-                </label>
-                <input
-                  type="number"
-                  min={10}
-                  max={180}
-                  value={editMatchDurationInput}
-                  onChange={(e) => setEditMatchDurationInput(Number(e.target.value))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-mono font-bold text-xs"
-                />
+            {!isSetSport && (
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Tổng phút ({Math.floor((editMatchDurationInput || 60) / 2)}p×2)
+                  </label>
+                  <input
+                    type="number"
+                    min={10}
+                    max={180}
+                    value={editMatchDurationInput}
+                    onChange={(e) => setEditMatchDurationInput(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-mono font-bold text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Nghỉ giữa (phút)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={30}
+                    value={editMatchBreakInput}
+                    onChange={(e) => setEditMatchBreakInput(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-mono font-bold text-xs"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">Nghỉ giữa (phút)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={30}
-                  value={editMatchBreakInput}
-                  onChange={(e) => setEditMatchBreakInput(Number(e.target.value))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-mono font-bold text-xs"
-                />
+            )}
+
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-slate-800">
+                  Đồng hồ hiện tại ({String(Math.max(0, editMatchCurrentMinInput || 0)).padStart(2, '0')}:{String(Math.max(0, Math.min(59, editMatchCurrentSecInput || 0))).padStart(2, '0')})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditMatchCurrentMinInput(0);
+                    setEditMatchCurrentSecInput(0);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-[11px] font-bold text-slate-700 cursor-pointer"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Đặt lại 00:00</span>
+                </button>
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">Phút hiện tại</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={180}
-                  value={editMatchCurrentMinInput}
-                  onChange={(e) => setEditMatchCurrentMinInput(Number(e.target.value))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2 font-mono font-bold text-xs text-blue-700"
-                />
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Phút hiện tại</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={180}
+                    value={editMatchCurrentMinInput}
+                    onChange={(e) => setEditMatchCurrentMinInput(Number(e.target.value))}
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold text-xs text-blue-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Giây (0–59)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={editMatchCurrentSecInput}
+                    onChange={(e) => setEditMatchCurrentSecInput(Math.max(0, Math.min(59, Number(e.target.value) || 0)))}
+                    className="w-full bg-white border border-slate-300 rounded-xl p-2 font-mono font-bold text-xs text-blue-700"
+                  />
+                </div>
               </div>
             </div>
 
@@ -2156,7 +2854,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
                 onClick={handleSaveMatchTimeConfig}
                 className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-500 hover:to-sky-500 text-white text-xs font-black shadow-md"
               >
-                Lưu Thời Gian Trận
+                Lưu &amp; Đồng Bộ Thời Gian
               </button>
             </div>
           </div>
@@ -2184,7 +2882,7 @@ export const LiveMatchCenter: React.FC<LiveMatchCenterProps> = ({
               </div>
 
               {quickSetsDraft.map((s, idx) => {
-                const targetPts = s.setNumber >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet;
+                const targetPts = setConfig.bestOf > 1 && s.setNumber >= setConfig.bestOf ? setConfig.decidingSetPoints : setConfig.pointsPerSet;
                 return (
                   <div key={s.setNumber} className="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                     <div className="col-span-3 text-xs font-bold text-slate-700">

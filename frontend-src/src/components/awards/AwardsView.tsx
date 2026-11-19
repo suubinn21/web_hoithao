@@ -365,7 +365,6 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
               <span className="bg-amber-50 text-amber-800 text-xs font-bold px-2.5 py-0.5 rounded-full border border-amber-200">
                 VINH DANH &amp; CƠ CẤU GIẢI THƯỞNG
               </span>
-              <span className="text-xs text-slate-500 font-medium">Quy định Điều 28</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-slate-900">
               Bảng Vàng Danh Dự ITFTMS 2026
@@ -847,7 +846,7 @@ export const AwardsView: React.FC<AwardsViewProps> = ({
               <span>Danh Hiệu Cá Nhân Tùy Chọn ({individualAwards.length})</span>
             </h3>
             <p className="text-xs text-slate-600 mt-0.5">
-              Quy định Điều 28: Tuyên dương các cá nhân xuất sắc. Ban Tổ Chức có thể tùy biến thêm, sửa hoặc xóa danh hiệu theo nhu cầu giải đấu.
+              Tuyên dương các cá nhân xuất sắc. Ban Tổ Chức có thể tùy biến thêm, sửa hoặc xóa danh hiệu theo nhu cầu giải đấu.
             </p>
           </div>
 

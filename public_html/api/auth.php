@@ -42,6 +42,7 @@ function getCaptainMatchedTeamIds($pdo, $cleanId, $normTarget, $normCore) {
                 }
             }
         }
+        $stmt->closeCursor();
     } catch (Exception $e) {
         // Ignore if no tournaments table rows yet
     }
@@ -53,6 +54,7 @@ function checkRateLimit($pdo, $key) {
         $stmt = $pdo->prepare('SELECT attempts, last_attempt_at FROM login_attempts WHERE attempt_key = ?');
         $stmt->execute([$key]);
         $row = $stmt->fetch();
+        $stmt->closeCursor();
         if (!$row) return;
         $lastTs = strtotime($row['last_attempt_at']);
         if ($lastTs !== false && (time() - $lastTs) > 300) {
@@ -128,6 +130,7 @@ switch ($action) {
 
         $stmt = $pdo->query('SELECT * FROM users WHERE is_active = 1');
         $allUsers = $stmt->fetchAll();
+        $stmt->closeCursor();
 
         $authenticatedUser = null;
         foreach ($allUsers as $u) {
@@ -241,6 +244,7 @@ switch ($action) {
         $chk = $pdo->prepare('SELECT id, username, email FROM users WHERE LOWER(username) = ? OR LOWER(email) = ? LIMIT 1');
         $chk->execute([$cleanUsername, $cleanEmail]);
         $dup = $chk->fetch();
+        $chk->closeCursor();
         if ($dup) {
             if (strtolower($dup['username']) === $cleanUsername) {
                 jsonResponse(['ok' => false, 'error' => 'Tên tài khoản "' . $cleanUsername . '" đã tồn tại!'], 409);
@@ -262,6 +266,7 @@ switch ($action) {
         $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
         $stmt->execute([$newId]);
         $created = $stmt->fetch();
+        $stmt->closeCursor();
 
         if (function_exists('session_regenerate_id')) {
             @session_regenerate_id(true);
@@ -373,6 +378,7 @@ switch ($action) {
         $chk = $pdo->prepare('SELECT id, username, email FROM users WHERE LOWER(username) = ? OR LOWER(email) = ? LIMIT 1');
         $chk->execute([$cleanUsername, $email]);
         $dup = $chk->fetch();
+        $chk->closeCursor();
         if ($dup) {
             if (strtolower($dup['username']) === $cleanUsername) {
                 jsonResponse(['ok' => false, 'error' => 'Tên đăng nhập "' . $cleanUsername . '" đã tồn tại!'], 409);
@@ -394,6 +400,7 @@ switch ($action) {
         $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
         $stmt->execute([$newId]);
         $created = $stmt->fetch();
+        $stmt->closeCursor();
 
         writeAuthAuditLog(
             $pdo,
@@ -438,6 +445,7 @@ switch ($action) {
         $find = $pdo->prepare('SELECT * FROM users WHERE team_id = ? OR LOWER(username) = ? LIMIT 1');
         $find->execute([$teamId, $cleanUsername]);
         $existing = $find->fetch();
+        $find->closeCursor();
 
         $hash = password_hash($password, PASSWORD_BCRYPT);
         $avatar = 'https://api.dicebear.com/7.x/bottts/svg?seed=' . urlencode($cleanUsername);
@@ -452,7 +460,9 @@ switch ($action) {
             // Đảm bảo email không trùng
             $chkEmail = $pdo->prepare('SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1');
             $chkEmail->execute([$email]);
-            if ($chkEmail->fetch()) {
+            $hasDupEmail = (bool)$chkEmail->fetch();
+            $chkEmail->closeCursor();
+            if ($hasDupEmail) {
                 $email = $cleanUsername . '_' . substr(bin2hex(random_bytes(2)), 0, 4) . '@ctuet.edu.vn';
             }
             $targetId = 'USR-CAP-' . preg_replace('/[^A-Za-z0-9_-]/', '', $teamId) . '-' . substr(bin2hex(random_bytes(2)), 0, 4);
@@ -466,6 +476,7 @@ switch ($action) {
         $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
         $stmt->execute([$targetId]);
         $saved = $stmt->fetch();
+        $stmt->closeCursor();
 
         writeAuthAuditLog(
             $pdo,
@@ -494,6 +505,7 @@ switch ($action) {
         $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
         $stmt->execute([$userId]);
         $target = $stmt->fetch();
+        $stmt->closeCursor();
         if (!$target) {
             jsonResponse(['ok' => false, 'error' => 'Không tìm thấy tài khoản cần đổi mật khẩu!'], 404);
         }
@@ -546,6 +558,7 @@ switch ($action) {
         $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
         $stmt->execute([$userId]);
         $target = $stmt->fetch();
+        $stmt->closeCursor();
         if (!$target) {
             jsonResponse(['ok' => false, 'error' => 'Không tìm thấy tài khoản cần xóa!'], 404);
         }

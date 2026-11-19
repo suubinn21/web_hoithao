@@ -42,7 +42,7 @@ export type BadmintonCategory =
   | 'TEAM_TIE';
 
 export interface SportSetConfig {
-  bestOf: 3 | 5;
+  bestOf: 1 | 3 | 5;
   pointsPerSet: number;
   decidingSetPoints: number;
   winByTwo: boolean;
@@ -57,7 +57,7 @@ export interface MatchSetScore {
   winner?: 'HOME' | 'AWAY';
 }
 
-export type TournamentFormatType = 'SINGLE_LEAGUE' | 'GROUP_KNOCKOUT';
+export type TournamentFormatType = 'SINGLE_LEAGUE' | 'GROUP_KNOCKOUT' | 'KNOCKOUT';
 
 export interface TeamBusyConstraint {
   busyDates?: string[];
@@ -75,6 +75,7 @@ export interface StudentScheduleConfig {
   excludedDates: string[];   // Các ngày nghỉ lễ / thi giữa kỳ né lịch sinh viên
   fixedDates?: string[];     // Các ngày thi đấu cố định do BTC chọn sẵn
   teamBusySlots?: Record<string, TeamBusyConstraint>;
+  hasThirdPlace?: boolean;   // Có trận tranh hạng 3 trong thể thức Loại trực tiếp hay không
 }
 
 export interface PaidFineRecord {
@@ -236,7 +237,15 @@ export interface PenaltyShootout {
   }[];
 }
 
-export type MatchRound = 'GROUP' | 'QUARTER_FINAL' | 'SEMI_FINAL' | 'THIRD_PLACE' | 'FINAL';
+export type MatchRound =
+  | 'ROUND_OF_64'
+  | 'ROUND_OF_32'
+  | 'ROUND_OF_16'
+  | 'GROUP'
+  | 'QUARTER_FINAL'
+  | 'SEMI_FINAL'
+  | 'THIRD_PLACE'
+  | 'FINAL';
 
 export interface Match {
   id: string;
@@ -274,6 +283,15 @@ export interface Match {
   sets?: MatchSetScore[];    // Tỷ số chi tiết từng set (Cầu lông / Bóng chuyền)
   currentSet?: number;       // Set đang diễn ra (1..5)
   badmintonCategory?: BadmintonCategory;
+  bracketStage?: number;     // Chỉ số vòng trong nhánh loại trực tiếp (0 = vòng đầu)
+  nextMatchId?: string;      // ID trận tiếp theo đội thắng sẽ vào
+  nextSlot?: 'HOME' | 'AWAY';
+  thirdPlaceMatchId?: string;
+  thirdPlaceSlot?: 'HOME' | 'AWAY';
+  byeNote?: string;          // Ghi chú đội được miễn vòng 1 (BYE)
+  clockStartedAt?: number;   // Server-calibrated Unix ms when the current running clock started
+  clockBaseSeconds?: number; // Accumulated elapsed seconds before clockStartedAt
+  clockPaused?: boolean;     // True while match status is LIVE but referee paused clock
 }
 
 export interface GroupStanding {
@@ -542,8 +560,8 @@ export function determineSetWinner(
   cfg: SportSetConfig
 ): 'HOME' | 'AWAY' | undefined {
   if (homePoints === awayPoints) return undefined;
-  const target = setNumber >= cfg.bestOf ? cfg.decidingSetPoints : cfg.pointsPerSet;
-  if (cfg.maxPointCap && (homePoints >= cfg.maxPointCap || awayPoints >= cfg.maxPointCap)) {
+  const target = cfg.bestOf > 1 && setNumber >= cfg.bestOf ? cfg.decidingSetPoints : cfg.pointsPerSet;
+  if (cfg.maxPointCap && cfg.maxPointCap > 0 && (homePoints >= cfg.maxPointCap || awayPoints >= cfg.maxPointCap)) {
     return homePoints > awayPoints ? 'HOME' : 'AWAY';
   }
   if (cfg.winByTwo) {
@@ -603,4 +621,37 @@ export function formatMatchSetsCompact(match?: Match): string {
     .filter((s) => s.homePoints > 0 || s.awayPoints > 0)
     .map((s) => `${s.homePoints}-${s.awayPoints}`)
     .join(', ');
+}
+
+/** Computes authoritative elapsed match seconds across all devices. */
+export function computeMatchElapsedSeconds(
+  match?: Pick<Match, 'status' | 'currentMinute' | 'clockStartedAt' | 'clockBaseSeconds' | 'clockPaused'>,
+  nowMs: number = Date.now()
+): number {
+  if (!match) return 0;
+  const baseSec =
+    typeof match.clockBaseSeconds === 'number' && Number.isFinite(match.clockBaseSeconds)
+      ? Math.max(0, Math.floor(match.clockBaseSeconds))
+      : Math.max(0, Math.floor((match.currentMinute || 0) * 60));
+
+  if (
+    match.status === 'LIVE' &&
+    !match.clockPaused &&
+    typeof match.clockStartedAt === 'number' &&
+    Number.isFinite(match.clockStartedAt) &&
+    match.clockStartedAt > 0
+  ) {
+    const deltaSec = Math.max(0, Math.floor((nowMs - match.clockStartedAt) / 1000));
+    return baseSec + deltaSec;
+  }
+
+  return baseSec;
+}
+
+/** Formats elapsed seconds as MM:SS without truncating matches >= 100 minutes. */
+export function formatClockMMSS(totalSec: number): string {
+  const clamped = Math.max(0, Math.floor(totalSec || 0));
+  const m = Math.floor(clamped / 60);
+  const s = clamped % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }

@@ -1,7 +1,8 @@
 'use client';
 
-import React from 'react';
-import { Match, Team, FinancialTransaction, Complaint, UserRole, Tournament, getSportMeta, formatMatchSetsCompact, getEffectiveSetConfig } from '@/types';
+import React, { useState, useEffect } from 'react';
+import { Match, Team, FinancialTransaction, Complaint, UserRole, Tournament, getSportMeta, formatMatchSetsCompact, getEffectiveSetConfig, computeMatchElapsedSeconds, formatClockMMSS } from '@/types';
+import { getSyncedNowMs } from '@/services/dbSync';
 import { TabKey } from '../layout/Navigation';
 import {
   Trophy,
@@ -46,6 +47,19 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   const sportMeta = getSportMeta(sportType);
   const isSetSport = sportMeta.isSetSport;
   const setConfig = getEffectiveSetConfig(tournament);
+  const [, setClockTick] = useState(0);
+
+  const hasLiveRunningClock = matches.some(
+    (m) => m.status === 'LIVE' && !m.clockPaused && typeof m.clockStartedAt === 'number' && m.clockStartedAt > 0
+  );
+
+  useEffect(() => {
+    if (!hasLiveRunningClock) return;
+    const id = setInterval(() => {
+      setClockTick((t) => (t + 1) % 1000000);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [hasLiveRunningClock]);
 
   const liveMatches = matches.filter((m) => m.status === 'LIVE');
   const finishedMatches = matches.filter((m) => m.status === 'FINISHED');
@@ -154,7 +168,9 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
               <span>
                 {(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
                   ? 'Bảng Xếp Hạng Chung Cuộc'
-                  : `Bảng Xếp Hạng ${tournament?.numberOfGroups || 4} Bảng`}
+                  : tournament?.formatType === 'KNOCKOUT'
+                    ? 'Tổng Kết Loại Trực Tiếp'
+                    : `Bảng Xếp Hạng ${tournament?.numberOfGroups || 4} Bảng`}
               </span>
             </button>
 
@@ -171,7 +187,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                 onClick={() => onNavigate('bracket')}
                 className="flex items-center gap-2 min-h-[44px] px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/30 transition-all active:scale-95"
               >
-                <span>Nhánh Knockout</span>
+                <span>{tournament?.formatType === 'KNOCKOUT' ? 'Nhánh Loại Trực Tiếp' : 'Nhánh Knockout'}</span>
                 <ArrowRight className="w-4 h-4 text-sky-200" />
               </button>
             )}
@@ -330,12 +346,28 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                         </span>
                       </div>
 
-                      {m.status === 'LIVE' ? (
-                        <span className="bg-red-50 text-red-600 border border-red-200 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse text-[10px]">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
-                          {isSetSport ? `LIVE SET ${m.currentSet || 1}` : `LIVE ${m.currentMinute}'`}
-                        </span>
-                      ) : (
+                      {m.status === 'LIVE' ? (() => {
+                        const liveSec = computeMatchElapsedSeconds(m, getSyncedNowMs());
+                        const isPaused = Boolean(m.clockPaused);
+                        return (
+                          <span
+                            className={`${
+                              isPaused
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-red-50 text-red-600 border-red-200 animate-pulse'
+                            } border px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 text-[10px] font-mono`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-amber-500' : 'bg-red-600'}`}
+                            ></span>
+                            {isPaused
+                              ? `TẠM DỪNG • ${formatClockMMSS(liveSec)}`
+                              : isSetSport
+                                ? `LIVE SET ${m.currentSet || 1} • ${formatClockMMSS(liveSec)}`
+                                : `LIVE ${Math.floor(liveSec / 60)}' (${formatClockMMSS(liveSec)})`}
+                          </span>
+                        );
+                      })() : (
                         <span className="text-slate-600 font-mono text-[10px] bg-slate-50 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
                           <Clock className="w-3 h-3 text-blue-600" />
                           <span>{m.time} • {m.date}</span>
@@ -405,8 +437,12 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                 </div>
                 <p className="text-xs text-blue-100 leading-relaxed">
                   {sportType === 'VOLLEYBALL'
-                    ? `Mỗi trận đấu tối đa ${setConfig.bestOf} set (${setConfig.pointsPerSet} điểm, set quyết định ${setConfig.decidingSetPoints} điểm). Xếp hạng theo điểm trận chuẩn FIVB.`
-                    : `Mỗi trận đấu tối đa ${setConfig.bestOf} ván (${setConfig.pointsPerSet} điểm, tối đa 30 điểm). Xếp hạng theo chuẩn BWF (thắng 3đ, thua 0đ).`}
+                    ? setConfig.bestOf === 1
+                      ? `Thi đấu 1 set quyết định (${setConfig.pointsPerSet} điểm${setConfig.winByTwo ? ', cách biệt 2đ' : ''}). Xếp hạng theo điểm trận chuẩn FIVB.`
+                      : `Mỗi trận đấu tối đa ${setConfig.bestOf} set (${setConfig.pointsPerSet} điểm, set quyết định ${setConfig.decidingSetPoints} điểm). Xếp hạng theo điểm trận chuẩn FIVB.`
+                    : setConfig.bestOf === 1
+                      ? `Thi đấu 1 ván quyết định (${setConfig.pointsPerSet} điểm${setConfig.maxPointCap ? `, tối đa ${setConfig.maxPointCap}đ` : ''}). Xếp hạng theo chuẩn BWF.`
+                      : `Mỗi trận đấu tối đa ${setConfig.bestOf} ván (${setConfig.pointsPerSet} điểm${setConfig.maxPointCap ? `, tối đa ${setConfig.maxPointCap} điểm` : ''}). Xếp hạng theo chuẩn BWF (thắng 3đ, thua 0đ).`}
                 </p>
               </div>
             ) : (
@@ -426,9 +462,6 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                         Đua Vua Phá Lưới (Golden Boot)
                       </h3>
                     </div>
-                    <span className="text-xs font-mono font-bold text-amber-300 bg-black/60 px-2 py-0.5 rounded border border-amber-500/40">
-                      Điều 25
-                    </span>
                   </div>
                 </div>
 
@@ -487,14 +520,23 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
             <div className="flex items-center justify-between gap-2">
               <span>Thể thức:</span>
               <strong className="text-slate-900 text-right">
-                {tournament?.format || `${sportMeta.label} • ${(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE' ? `Vòng tròn (${tournament?.maxTeams || 12} ${sportMeta.unitShortLabel.toLowerCase()})` : 'Chia bảng + Knockout'}`}
+                {tournament?.format ||
+                  `${sportMeta.label} • ${
+                    (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
+                      ? `Vòng tròn (${tournament?.maxTeams || 12} ${sportMeta.unitShortLabel.toLowerCase()})`
+                      : tournament?.formatType === 'KNOCKOUT'
+                        ? `Loại trực tiếp (${tournament?.maxTeams || 8} ${sportMeta.unitShortLabel.toLowerCase()})`
+                        : 'Chia bảng + Knockout'
+                  }`}
               </strong>
             </div>
             <div className="flex items-center justify-between gap-2">
               <span>{isSetSport ? 'Thể lệ Set:' : 'Thời lượng:'}</span>
               <strong className="text-slate-900 text-right">
                 {isSetSport
-                  ? `BO${setConfig.bestOf} • ${setConfig.pointsPerSet}đ (Set cuối ${setConfig.decidingSetPoints}đ)`
+                  ? setConfig.bestOf === 1
+                    ? `1 Set • ${setConfig.pointsPerSet}đ`
+                    : `BO${setConfig.bestOf} • ${setConfig.pointsPerSet}đ (Set cuối ${setConfig.decidingSetPoints}đ)`
                   : `${tournament?.matchDurationMinutes || 60}p (${Math.floor((tournament?.matchDurationMinutes || 60) / 2)}p × 2, nghỉ ${tournament?.breakDurationMinutes || 5}p)`}
               </strong>
             </div>

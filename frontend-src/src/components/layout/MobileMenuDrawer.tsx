@@ -510,7 +510,13 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
                   <div className={`p-2 rounded-xl shrink-0 ${activeTab === 'draw' ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-600'}`}>
                     <Dices className="w-4 h-4" />
                   </div>
-                  <span>{(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE' ? 'Bốc Thăm Mã Số' : 'Bốc Thăm Bảng'}</span>
+                  <span>
+                    {(tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE'
+                      ? 'Bốc Thăm Mã Số'
+                      : tournament?.formatType === 'KNOCKOUT'
+                        ? 'Bốc Thăm Nhánh'
+                        : 'Bốc Thăm Bảng'}
+                  </span>
                 </button>
               )}
 

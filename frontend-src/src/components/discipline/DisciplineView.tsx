@@ -182,9 +182,11 @@ export const DisciplineView: React.FC<DisciplineViewProps> = ({
             <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
               {isSingleLeague ? 'KỶ LUẬT & TIỀN PHẠT THẺ CTUT' : 'DISCIPLINE & SUSPENSION ENGINE'}
             </span>
-            <span className="text-xs text-slate-500 font-medium">
-              {isSingleLeague ? 'Thẻ vàng 20k • 2 vàng/trận 50k • Thẻ đỏ trực tiếp 100k' : 'Quy định Điều 11 & Điều 12'}
-            </span>
+            {isSingleLeague && (
+              <span className="text-xs text-slate-500 font-medium">
+                Thẻ vàng 20k • 2 vàng/trận 50k • Thẻ đỏ trực tiếp 100k
+              </span>
+            )}
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
             {isSingleLeague ? 'Quản Lý Thẻ Phạt, Tiền Phạt & Quyết Định BTC' : 'Quản Lý Thẻ Phạt & Án Treo Giò Tích Lũy'}

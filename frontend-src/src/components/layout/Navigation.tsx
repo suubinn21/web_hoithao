@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { UserRole } from '@/types';
+import { UserRole, TournamentFormatType } from '@/types';
 import {
   Home,
   Radio,
@@ -39,7 +39,7 @@ interface NavigationProps {
   activeComplaintsCount: number;
   suspendedPlayersCount: number;
   currentRole: UserRole;
-  formatType?: 'SINGLE_LEAGUE' | 'GROUP_KNOCKOUT';
+  formatType?: TournamentFormatType;
   onBackToPortal?: () => void;
 }
 
@@ -54,6 +54,7 @@ export const Navigation: React.FC<NavigationProps> = ({
   onBackToPortal,
 }) => {
   const isSingleLeague = formatType === 'SINGLE_LEAGUE';
+  const isDirectKnockout = formatType === 'KNOCKOUT';
   const canManageDraw = currentRole === 'SUPER_ADMIN' || currentRole === 'ORGANIZER';
   const canManageFinance = currentRole === 'SUPER_ADMIN' || currentRole === 'ORGANIZER';
   const canViewAudit = currentRole === 'SUPER_ADMIN' || currentRole === 'ORGANIZER';
@@ -70,10 +71,14 @@ export const Navigation: React.FC<NavigationProps> = ({
     },
     { key: 'schedule' as TabKey, label: 'Lịch đấu & kết quả', icon: CalendarDays },
     { key: 'standings' as TabKey, label: 'Bảng Xếp Hạng', icon: Trophy },
-    ...(!isSingleLeague ? [{ key: 'bracket' as TabKey, label: 'Vòng Loại', icon: GitFork }] : []),
+    ...(!isSingleLeague ? [{ key: 'bracket' as TabKey, label: isDirectKnockout ? 'Nhánh Đấu' : 'Vòng Loại', icon: GitFork }] : []),
     { key: 'teams' as TabKey, label: 'quản lý đội bóng', icon: Users },
     ...(canManageDraw
-      ? [{ key: 'draw' as TabKey, label: isSingleLeague ? 'Bốc Thăm Mã Số' : 'Bốc Thăm Chia Bảng', icon: Dices }]
+      ? [{
+          key: 'draw' as TabKey,
+          label: isSingleLeague ? 'Bốc Thăm Mã Số' : isDirectKnockout ? 'Bốc Thăm Nhánh' : 'Bốc Thăm Chia Bảng',
+          icon: Dices,
+        }]
       : []),
     {
       key: 'discipline' as TabKey,

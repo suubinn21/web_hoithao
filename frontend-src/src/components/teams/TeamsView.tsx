@@ -219,7 +219,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
       currentRole,
       newStatus === 'WITHDRAWN' ? 'XÁC NHẬN ĐỘI BỎ CUỘC' : 'PHỤC HỒI TRẠNG THÁI ĐỘI BÓNG',
       team.name,
-      `Chuyển trạng thái sang ${newStatus}. Kích hoạt quy định Điều 13: Các đội cùng bảng được cộng 3 điểm.`
+      `Chuyển trạng thái sang ${newStatus}. Các đội cùng bảng được cộng 3 điểm.`
     );
   };
 
@@ -241,8 +241,10 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
       return;
     }
 
-    const isSingleLeague = (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE';
-    const maxAllowedTeams = tournament?.maxTeams || (isSingleLeague ? 12 : 16);
+    const formatType = tournament?.formatType || 'SINGLE_LEAGUE';
+    const isSingleLeague = formatType === 'SINGLE_LEAGUE';
+    const isFlatFormat = isSingleLeague || formatType === 'KNOCKOUT';
+    const maxAllowedTeams = tournament?.maxTeams || (isSingleLeague ? 12 : formatType === 'KNOCKOUT' ? 8 : 16);
     if (teams.length >= maxAllowedTeams) {
       alert(`Giải đấu đã đạt giới hạn tối đa ${maxAllowedTeams} đội bóng theo Điều lệ!`);
       return;
@@ -281,7 +283,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
       feeStatus: 'UNPAID',
       registrationFee: tournament?.registrationFee ?? (isSingleLeague ? 100000 : 500000),
       depositFee: tournament?.depositFee ?? (isSingleLeague ? 0 : 50000),
-      group: isSingleLeague ? 'A' : (newTeamGroup !== 'NONE' ? newTeamGroup : undefined),
+      group: isFlatFormat ? 'A' : (newTeamGroup !== 'NONE' ? newTeamGroup : undefined),
       players: [],
     };
 
@@ -514,7 +516,6 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
             <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
               {sportMeta.icon} HỒ SƠ {sportMeta.unitLabel.toUpperCase()} &amp; {sportMeta.playerLabel.toUpperCase()}
             </span>
-            <span className="text-xs text-slate-500 font-medium">Quy định Điều 14, 15 &amp; 16</span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
             Danh Sách {sportMeta.unitLabel} &amp; Đăng Ký {sportMeta.playerLabel}
@@ -539,8 +540,8 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
             </button>
           )}
 
-          {/* Group Filter (chỉ hiện khi có nhiều bảng) */}
-          {(tournament?.formatType || 'SINGLE_LEAGUE') !== 'SINGLE_LEAGUE' && (
+          {/* Group Filter (chỉ hiện khi chia bảng) */}
+          {(tournament?.formatType || 'SINGLE_LEAGUE') === 'GROUP_KNOCKOUT' && (
             <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 flex-wrap">
               <button
                 onClick={() => setFilterGroup('ALL')}
@@ -763,10 +764,10 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                               : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'
                           }`}
-                          title="Quy định Điều 13: Xử lý đội bỏ cuộc"
+                          title="Xử lý đội bỏ cuộc"
                         >
                           <Ban className="w-3.5 h-3.5" />
-                          <span>{selectedTeam.status === 'WITHDRAWN' ? 'Hồi Phục Đội' : 'Báo Bỏ Cuộc (Điều 13)'}</span>
+                          <span>{selectedTeam.status === 'WITHDRAWN' ? 'Hồi Phục Đội' : 'Báo Bỏ Cuộc'}</span>
                         </button>
                       )}
                     </div>
@@ -900,7 +901,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                           </span>
                         ) : selectedTeam.status === 'WITHDRAWN' ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 font-bold text-xs">
-                            BỎ CUỘC (ĐIỀU 13)
+                            BỎ CUỘC
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold text-xs">
@@ -1094,7 +1095,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Shirt className="w-5 h-5 text-blue-600" />
-                Đăng Ký Đội Bóng Mới (Điều 14)
+                Đăng Ký {sportMeta.unitLabel} Mới
               </h3>
               <button
                 onClick={() => setTeamModalOpen(false)}
@@ -1175,19 +1176,21 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-700 block mb-1">Bảng Đấu (Tùy Chọn)</label>
-                <select
-                  value={newTeamGroup}
-                  onChange={(e) => setNewTeamGroup(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:border-blue-500 focus:bg-white focus:outline-none"
-                >
-                  <option value="NONE">Chờ Bốc Thăm Sau</option>
-                  {groups.map((g) => (
-                    <option key={g} value={g}>Bảng {g}</option>
-                  ))}
-                </select>
-              </div>
+              {(tournament?.formatType || 'SINGLE_LEAGUE') === 'GROUP_KNOCKOUT' && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-700 block mb-1">Bảng Đấu (Tùy Chọn)</label>
+                  <select
+                    value={newTeamGroup}
+                    onChange={(e) => setNewTeamGroup(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 text-slate-900 text-xs rounded-xl p-2.5 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  >
+                    <option value="NONE">Chờ Bốc Thăm Sau</option>
+                    {groups.map((g) => (
+                      <option key={g} value={g}>Bảng {g}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1343,7 +1346,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Users className="w-5 h-5 text-blue-600" />
-                Đăng Ký {sportMeta.playerLabel} Mới (Điều 15)
+                Đăng Ký {sportMeta.playerLabel} Mới
               </h3>
               <button
                 onClick={() => setPlayerModalOpen(false)}

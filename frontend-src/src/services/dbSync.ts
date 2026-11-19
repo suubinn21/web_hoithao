@@ -58,12 +58,14 @@ interface TournamentGetResponse {
   error?: string;
   unchanged?: boolean;
   version?: number;
+  serverTimeMs?: number;
   data?: TournamentCloudData;
 }
 
 interface TournamentListResponse {
   ok?: boolean;
   error?: string;
+  serverTimeMs?: number;
   tournaments?: Tournament[];
   stats?: TournamentStatsMap;
 }
@@ -73,12 +75,29 @@ interface TournamentMutationResponse {
   error?: string;
   id?: string;
   version?: number;
+  serverTimeMs?: number;
 }
 
 const OFFLINE_QUEUE_STORAGE_KEY = 'itftms_offline_sync_queue_v1';
 const MAX_CLOUD_AUDIT_LOGS = 150;
 const DEBOUNCE_PUSH_MS = 100;
 const MAX_RETRY_BACKOFF_MS = 30000;
+
+let serverClockOffsetMs = 0;
+let hasServerClockOffset = false;
+
+export function recordServerTimeMs(serverTimeMs: unknown, requestStartLocalMs?: number): void {
+  if (typeof serverTimeMs !== 'number' || !Number.isFinite(serverTimeMs) || serverTimeMs <= 0) return;
+  const nowLocal = Date.now();
+  const localMidpoint =
+    typeof requestStartLocalMs === 'number' ? Math.round((requestStartLocalMs + nowLocal) / 2) : nowLocal;
+  serverClockOffsetMs = serverTimeMs - localMidpoint;
+  hasServerClockOffset = true;
+}
+
+export function getSyncedNowMs(): number {
+  return Date.now() + (hasServerClockOffset ? serverClockOffsetMs : 0);
+}
 
 const tournamentVersionCache = new Map<string, number>();
 const offlineQueue = new Map<string, QueuedPatchEntry>();
@@ -337,6 +356,7 @@ async function flushTournamentPatch(tournamentId: string, keepalive = false): Pr
     };
     const bodyStr = JSON.stringify(payload);
 
+    const reqStartedAt = Date.now();
     const res = await fetchJsonWithTimeout<TournamentMutationResponse>('/api/tournaments.php?action=save', {
       method: 'POST',
       credentials: 'same-origin',
@@ -347,6 +367,7 @@ async function flushTournamentPatch(tournamentId: string, keepalive = false): Pr
     });
 
     if (res.ok && res.data?.ok) {
+      recordServerTimeMs(res.data.serverTimeMs, reqStartedAt);
       if (res.data.version) {
         tournamentVersionCache.set(tournamentId, Number(res.data.version));
       }
@@ -433,6 +454,7 @@ export async function fetchTournamentsListCloud(): Promise<{
   tournaments: Tournament[];
   stats: TournamentStatsMap;
 }> {
+  const reqStartedAt = Date.now();
   const res = await fetchJsonWithTimeout<TournamentListResponse>('/api/tournaments.php?action=list', {
     method: 'GET',
     credentials: 'same-origin',
@@ -442,6 +464,7 @@ export async function fetchTournamentsListCloud(): Promise<{
   if (!res.ok || !res.data?.ok) {
     throw new Error(res.error || res.data?.error || 'Không thể tải danh sách giải đấu từ CSDL MySQL.');
   }
+  recordServerTimeMs(res.data.serverTimeMs, reqStartedAt);
   const rawList = Array.isArray(res.data.tournaments) ? res.data.tournaments : [];
   // Keep unsynced local profile edits visible until offline queue finishes pushing
   const mergedList = rawList.map((t) => getQueuedTournamentPatch(t.id) || t);
@@ -558,6 +581,7 @@ export function subscribeTournamentCloud(
       }
 
       const since = tournamentVersionCache.get(tournamentId) || 0;
+      const reqStartedAt = Date.now();
       const res = await fetchJsonWithTimeout<TournamentGetResponse>(
         `/api/tournaments.php?action=get&id=${encodeURIComponent(tournamentId)}&sinceVersion=${since}`,
         {
@@ -571,6 +595,8 @@ export function subscribeTournamentCloud(
       if (!res.ok || !res.data?.ok) {
         throw new Error(res.error || res.data?.error || 'Không thể tải dữ liệu giải đấu.');
       }
+
+      recordServerTimeMs(res.data.serverTimeMs, reqStartedAt);
 
       // Guard against stale GET finishing after the user made a local edit during flight
       if (stopped || hasPendingCloudSync(tournamentId)) {
@@ -592,7 +618,7 @@ export function subscribeTournamentCloud(
       }
     } finally {
       inFlight = false;
-      const nextDelay = consecutiveFailures > 0 ? Math.min(20000, 5000 * Math.pow(1.6, Math.min(3, consecutiveFailures))) : 5000;
+      const nextDelay = consecutiveFailures > 0 ? Math.min(20000, 5000 * Math.pow(1.6, Math.min(3, consecutiveFailures))) : 3000;
       scheduleNext(Math.round(nextDelay));
     }
   };
@@ -615,6 +641,7 @@ export function subscribeTournamentCloud(
 export async function createTournamentCloud(
   initialData: TournamentCloudData
 ): Promise<{ ok: boolean; error?: string }> {
+  const reqStartedAt = Date.now();
   const res = await fetchJsonWithTimeout<TournamentMutationResponse>('/api/tournaments.php?action=create', {
     method: 'POST',
     credentials: 'same-origin',
@@ -632,6 +659,8 @@ export async function createTournamentCloud(
       error: res.error || res.data?.error || 'Không thể tạo giải đấu trên MySQL.',
     };
   }
+
+  recordServerTimeMs(res.data.serverTimeMs, reqStartedAt);
 
   if (res.data.version && initialData.tournament?.id) {
     tournamentVersionCache.set(initialData.tournament.id, Number(res.data.version));

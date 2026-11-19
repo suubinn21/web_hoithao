@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Match, Team, Venue, Referee, UserRole, Tournament, MatchStatus, StudentScheduleConfig, TeamBusyConstraint, formatMatchSetsCompact, getSportMeta } from '@/types';
-import { ScheduleEngine, DEFAULT_STUDENT_SCHEDULE_CONFIG } from '@/services/scheduleEngine';
+import { Match, Team, Venue, Referee, UserRole, Tournament, MatchStatus, StudentScheduleConfig, TeamBusyConstraint, formatMatchSetsCompact, getSportMeta, computeMatchElapsedSeconds, formatClockMMSS } from '@/types';
+import { getSyncedNowMs } from '@/services/dbSync';
+import { ScheduleEngine, DEFAULT_STUDENT_SCHEDULE_CONFIG, buildAutoTimeSlots } from '@/services/scheduleEngine';
 import { KnockoutEngine } from '@/services/knockoutEngine';
 import { StorageService } from '@/services/storage';
 import {
@@ -73,7 +74,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   tournament,
   onTournamentUpdate,
 }) => {
-  const isSingleLeague = (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE';
+  const formatType = tournament?.formatType || 'SINGLE_LEAGUE';
+  const isSingleLeague = formatType === 'SINGLE_LEAGUE';
+  const isDirectKnockout = formatType === 'KNOCKOUT';
+  const usesDynamicSchedulePanel = isSingleLeague || isDirectKnockout;
   const sportMeta = getSportMeta(tournament?.sportType);
 
   const [filterVenue, setFilterVenue] = useState<string>('ALL');
@@ -101,6 +105,18 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     setFixedDurationDraft(tournament?.matchDurationMinutes || (isSingleLeague ? 60 : 40));
     setFixedBreakDraft(tournament?.breakDurationMinutes ?? 5);
   }, [tournament?.id, tournament?.matchDurationMinutes, tournament?.breakDurationMinutes, isSingleLeague]);
+
+  const [, setClockTick] = useState(0);
+  const hasLiveRunningClock = matches.some(
+    (m) => m.status === 'LIVE' && !m.clockPaused && typeof m.clockStartedAt === 'number' && m.clockStartedAt > 0
+  );
+  useEffect(() => {
+    if (!hasLiveRunningClock) return;
+    const id = setInterval(() => {
+      setClockTick((t) => (t + 1) % 1000000);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [hasLiveRunningClock]);
   const [selectedConstraintTeamId, setSelectedConstraintTeamId] = useState<string>(teams[0]?.id || '');
   const [newTeamBusyDate, setNewTeamBusyDate] = useState<string>('');
   const [swapSourceMatchId, setSwapSourceMatchId] = useState<string | null>(null);
@@ -170,6 +186,38 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     try {
       const startDate = tournament?.startDate || '2026-10-17';
 
+      if (isDirectKnockout) {
+        if (teams.length < 2) {
+          alert('Cần ít nhất 2 đội / VĐV đã đăng ký để tạo lịch loại trực tiếp!');
+          return;
+        }
+        const ok =
+          matches.length === 0 ||
+          window.confirm(
+            `Tạo lại toàn bộ nhánh đấu LOẠI TRỰC TIẾP cho ${teams.length} ${sportMeta.unitShortLabel.toLowerCase()}?\n\n• Tự động xử lý suất miễn vòng 1 (BYE) nếu số đội lẻ\n• Dùng ${scheduleConfig.pitchesCount} sân × ${scheduleConfig.slotsPerDay} trận/ngày\n• Nhấn OK để tạo lịch mới.`
+          );
+        if (!ok) return;
+
+        const effectiveTour: Tournament = {
+          ...(tournament || ({} as Tournament)),
+          startDate,
+          scheduleConfig,
+          numberOfVenues: scheduleConfig.pitchesCount,
+        };
+        const generated = ScheduleEngine.generateDirectKnockoutSchedule(teams, venues, referees, effectiveTour);
+        onMatchesUpdate(generated);
+        StorageService.saveMatches(generated);
+        StorageService.logAction(
+          currentRole,
+          currentRole,
+          'TẠO LỊCH LOẠI TRỰC TIẾP',
+          `${generated.length} Trận (${teams.length} ${sportMeta.unitShortLabel})`,
+          `Tạo cây đấu loại trực tiếp ${generated.length} trận (hỗ trợ BYE khi đội lẻ) trên ${scheduleConfig.pitchesCount} sân từ ${startDate}.`
+        );
+        alert(`Đã tạo nhánh đấu loại trực tiếp ${generated.length} trận cho ${teams.length} ${sportMeta.unitShortLabel.toLowerCase()}!`);
+        return;
+      }
+
       if (isSingleLeague) {
         if (teams.length < 2) {
           alert('Cần ít nhất 2 đội đã đăng ký để xếp lịch thi đấu vòng tròn!');
@@ -200,8 +248,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         return;
       }
 
-      const generated = ScheduleEngine.generateGroupSchedule(teams, venues, referees, startDate);
-      const knockouts = ScheduleEngine.generateKnockoutSchedule(venues, referees, startDate);
+      const generated = ScheduleEngine.generateGroupSchedule(teams, venues, referees, startDate, tournament);
+      const lastGroupDate = generated[generated.length - 1]?.date || startDate;
+      const knockouts = ScheduleEngine.generateKnockoutSchedule(
+        venues,
+        referees,
+        lastGroupDate,
+        tournament,
+        generated.length
+      );
       const allUpdated = [...generated, ...knockouts];
 
       onMatchesUpdate(allUpdated);
@@ -664,11 +719,26 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {m.status === 'LIVE' && (
-              <span className="flex items-center gap-1 font-bold text-red-700 animate-pulse text-[10px] bg-red-50 border border-red-200 px-2 py-0.5 rounded-lg">
-                <Radio className="w-3 h-3 text-red-600" /> {sportMeta.isSetSport ? `LIVE SET ${m.currentSet || 1}` : `LIVE ${m.currentMinute}'`}
-              </span>
-            )}
+            {m.status === 'LIVE' && (() => {
+              const liveSec = computeMatchElapsedSeconds(m, getSyncedNowMs());
+              const isPaused = Boolean(m.clockPaused);
+              return (
+                <span
+                  className={`flex items-center gap-1 font-bold text-[10px] font-mono border px-2 py-0.5 rounded-lg ${
+                    isPaused
+                      ? 'text-amber-700 bg-amber-50 border-amber-200'
+                      : 'text-red-700 animate-pulse bg-red-50 border-red-200'
+                  }`}
+                >
+                  <Radio className={`w-3 h-3 ${isPaused ? 'text-amber-600' : 'text-red-600'}`} />
+                  {isPaused
+                    ? `TẠM DỪNG • ${formatClockMMSS(liveSec)}`
+                    : sportMeta.isSetSport
+                      ? `LIVE SET ${m.currentSet || 1} • ${formatClockMMSS(liveSec)}`
+                      : `LIVE ${Math.floor(liveSec / 60)}' (${formatClockMMSS(liveSec)})`}
+                </span>
+              );
+            })()}
             {m.status === 'FINISHED' && (
               <span className="text-emerald-700 font-bold text-[10px] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
                 KẾT THÚC
@@ -820,25 +890,29 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             <span className="bg-blue-50 text-blue-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
               {isSingleLeague
                 ? `LỊCH VÒNG TRÒN 1 LƯỢT • ${matches.length || Math.floor((teams.length * Math.max(0, teams.length - 1)) / 2)} TRẬN`
-                : 'LỊCH THI ĐẤU TRỌN GÓI 1 NGÀY • 32 TRẬN'}
+                : isDirectKnockout
+                  ? `LOẠI TRỰC TIẾP • ${matches.length || Math.max(0, teams.length - 1)} TRẬN`
+                  : `CHIA BẢNG + KNOCKOUT • ${matches.length || 32} TRẬN`}
             </span>
             <span className="text-xs text-slate-500">
-              {isSingleLeague
-                ? `${teams.length || tournament?.maxTeams || 12} Đội • ${scheduleConfig.pitchesCount} Sân × ${scheduleConfig.slotsPerDay} Ca/Ngày • ${tournament?.matchDurationMinutes || 60} Phút (${Math.floor((tournament?.matchDurationMinutes || 60) / 2)}p×2)`
-                : '16 Đội • 4 Bảng • 4 Sân'}
+              {usesDynamicSchedulePanel
+                ? `${teams.length || tournament?.maxTeams || 12} ${sportMeta.unitShortLabel} • ${scheduleConfig.pitchesCount} Sân × ${scheduleConfig.slotsPerDay} Ca/Ngày • ${tournament?.matchDurationMinutes || 60} Phút${sportMeta.isSetSport ? '' : ` (${Math.floor((tournament?.matchDurationMinutes || 60) / 2)}p×2)`}`
+                : `${tournament?.maxTeams || 16} ${sportMeta.unitShortLabel} • ${tournament?.numberOfGroups || 4} Bảng • ${scheduleConfig.pitchesCount} Sân`}
             </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900">
             {isSingleLeague
               ? 'Lịch Thi Đấu & Tối Ưu Thời Khóa Biểu Sinh Viên'
-              : canGenerate
-                ? 'Điều Hành Lịch Đấu 1 Ngày (06:30 – 17:35)'
-                : 'Lịch Thi Đấu & Kết Quả (06:30 – 17:35)'}
+              : isDirectKnockout
+                ? 'Lịch Thi Đấu Loại Trực Tiếp (Single Elimination)'
+                : canGenerate
+                  ? 'Điều Hành Lịch Đấu Chia Bảng + Knockout'
+                  : 'Lịch Thi Đấu & Kết Quả'}
           </h2>
           <p className="text-xs text-slate-600 mt-1">
-            {isSingleLeague
-              ? `1 tuần 1–2 ngày (${scheduleConfig.matchDaysOfWeek.map((d) => WEEKDAY_OPTIONS.find((w) => w.val === d)?.label || '').filter(Boolean).join(', ')}), thuê ${scheduleConfig.pitchesCount} sân đá ${scheduleConfig.slotsPerDay} ca/sân (${scheduleConfig.timeSlots.join(' & ')}). Dự kiến ${studentAnalysis.totalMatchDays || 11} ngày thi đấu.`
-              : '06:30 – 10:30: 24 trận vòng bảng (6 ca x 4 sân) • 10:30 – 15:00: Nghỉ trưa & tổng hợp BXH • 15:00 – 17:35: Tứ kết, Bán kết, Tranh hạng 3 & Chung kết.'}
+            {usesDynamicSchedulePanel
+              ? `${scheduleConfig.matchDaysOfWeek.map((d) => WEEKDAY_OPTIONS.find((w) => w.val === d)?.label || '').filter(Boolean).join(', ')}, thuê ${scheduleConfig.pitchesCount} sân đá ${scheduleConfig.slotsPerDay} ca/sân (${scheduleConfig.timeSlots.join(' & ')}). Dự kiến ${studentAnalysis.totalMatchDays || 1} ngày thi đấu.`
+              : 'Vòng bảng theo từng bảng đấu ➔ Vòng loại trực tiếp (Tứ kết / Bán kết / Tranh hạng 3 / Chung kết).'}
           </p>
         </div>
 
@@ -871,7 +945,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             </button>
           )}
 
-          {canGenerate && isSingleLeague && (
+          {canGenerate && usesDynamicSchedulePanel && (
             <>
               <button
                 type="button"
@@ -885,15 +959,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 <span>Thời Gian Cố Định &amp; Lịch SV</span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleReoptimizeRemaining}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 font-bold text-xs shadow-2xs transition-all active:scale-95"
-                title="Giữ các trận đã khóa / đã đá, tự động xếp lại các trận còn lại tránh giờ học & ngày thi sinh viên"
-              >
-                <Zap className="w-3.5 h-3.5 text-sky-600" />
-                <span>Tối Ưu Phần Còn Lại</span>
-              </button>
+              {isSingleLeague && (
+                <button
+                  type="button"
+                  onClick={handleReoptimizeRemaining}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 font-bold text-xs shadow-2xs transition-all active:scale-95"
+                  title="Giữ các trận đã khóa / đã đá, tự động xếp lại các trận còn lại tránh giờ học & ngày thi sinh viên"
+                >
+                  <Zap className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Tối Ưu Phần Còn Lại</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -901,12 +977,16 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all active:scale-95"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Tạo Lịch {Math.floor((teams.length * Math.max(0, teams.length - 1)) / 2) || 66} Trận</span>
+                <span>
+                  {isDirectKnockout
+                    ? `Tạo Nhánh Loại Trực Tiếp (${teams.length} ${sportMeta.unitShortLabel})`
+                    : `Tạo Lịch ${Math.floor((teams.length * Math.max(0, teams.length - 1)) / 2) || 66} Trận`}
+                </span>
               </button>
             </>
           )}
 
-          {canGenerate && !isSingleLeague && (
+          {canGenerate && !usesDynamicSchedulePanel && (
             <>
               <button
                 onClick={handleSyncAllSchedule}
@@ -988,7 +1068,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       )}
 
       {/* Student-Friendly Schedule Optimizer Configurator */}
-      {canGenerate && isSingleLeague && showStudentPanel && (
+      {canGenerate && usesDynamicSchedulePanel && showStudentPanel && (
         <div className="bg-white border border-indigo-200 rounded-3xl p-5 shadow-xs space-y-5 text-slate-800">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
@@ -997,7 +1077,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               </div>
               <div>
                 <h3 className="text-sm sm:text-base font-black text-slate-900">
-                  Tinh Chỉnh Lịch Thi Đấu Phù Hợp Sinh Viên (3 Sân × 2 Trận/Ngày)
+                  Tinh Chỉnh Lịch Thi Đấu Phù Hợp Sinh Viên ({scheduleConfig.pitchesCount} Sân × {scheduleConfig.slotsPerDay} Trận/Ngày)
                 </h3>
                 <p className="text-[11px] text-slate-500">
                   Chọn 1–2 ngày rảnh mỗi tuần, khung giờ không kẹt tiết học, ngày nghỉ thi &amp; lịch bận riêng từng đội lớp.
@@ -1052,39 +1132,86 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               <span className="font-bold text-slate-800 block">2. Số sân thuê &amp; Số ca / sân / ngày:</span>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-slate-500 block mb-1">Số sân thuê</label>
-                  <select
+                  <label className="text-[10px] text-slate-500 block mb-1">Số sân thuê (1–16)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={16}
                     value={scheduleConfig.pitchesCount}
-                    onChange={(e) =>
-                      updateScheduleConfig({ ...scheduleConfig, pitchesCount: Number(e.target.value) })
-                    }
-                    className="w-full bg-white border border-slate-200 rounded-xl p-2 font-bold text-blue-700"
-                  >
-                    <option value={2}>2 Sân</option>
-                    <option value={3}>3 Sân (Kế hoạch CTUT)</option>
-                    <option value={4}>4 Sân</option>
-                  </select>
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(16, Number(e.target.value) || 1));
+                      updateScheduleConfig({ ...scheduleConfig, pitchesCount: val });
+                    }}
+                    className="w-full bg-white border border-slate-200 rounded-xl p-2 font-mono font-bold text-blue-700"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {[1, 2, 3, 4, 6, 8].map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => updateScheduleConfig({ ...scheduleConfig, pitchesCount: p })}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                          scheduleConfig.pitchesCount === p
+                            ? 'bg-blue-600 text-white border-blue-700'
+                            : 'bg-white text-blue-700 border-slate-200 hover:bg-blue-50'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 block mb-1">Số trận/sân/ngày</label>
-                  <select
+                  <label className="text-[10px] text-slate-500 block mb-1">Số trận/sân/ngày (1–24)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={24}
                     value={scheduleConfig.slotsPerDay}
                     onChange={(e) => {
-                      const nextSlotsCount = Number(e.target.value);
-                      const slots = [...scheduleConfig.timeSlots];
-                      while (slots.length < nextSlotsCount) slots.push('10:00');
+                      const nextSlotsCount = Math.max(1, Math.min(24, Number(e.target.value) || 1));
+                      const nextSlots = buildAutoTimeSlots(
+                        nextSlotsCount,
+                        tournament?.matchDurationMinutes || 45,
+                        tournament?.breakDurationMinutes ?? 5,
+                        scheduleConfig.timeSlots
+                      );
                       updateScheduleConfig({
                         ...scheduleConfig,
                         slotsPerDay: nextSlotsCount,
-                        timeSlots: slots.slice(0, nextSlotsCount),
+                        timeSlots: nextSlots,
                       });
                     }}
-                    className="w-full bg-white border border-slate-200 rounded-xl p-2 font-bold text-emerald-700"
-                  >
-                    <option value={1}>1 trận / sân / ngày</option>
-                    <option value={2}>2 trận / sân / ngày</option>
-                    <option value={3}>3 trận / sân / ngày</option>
-                  </select>
+                    className="w-full bg-white border border-slate-200 rounded-xl p-2 font-mono font-bold text-emerald-700"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {(sportMeta.isSetSport ? [2, 4, 6, 8, 12] : [1, 2, 3, 4]).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => {
+                          const nextSlots = buildAutoTimeSlots(
+                            s,
+                            tournament?.matchDurationMinutes || 45,
+                            tournament?.breakDurationMinutes ?? 5,
+                            scheduleConfig.timeSlots
+                          );
+                          updateScheduleConfig({
+                            ...scheduleConfig,
+                            slotsPerDay: s,
+                            timeSlots: nextSlots,
+                          });
+                        }}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                          scheduleConfig.slotsPerDay === s
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-white text-emerald-700 border-slate-200 hover:bg-emerald-50'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
               <p className="text-[11px] text-blue-800 font-semibold">
@@ -1186,7 +1313,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 ⏱️ Tạo Thời Lượng Thi Đấu Cố Định Toàn Giải (Mỗi Trận):
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {[40, 50, 60, 70].map((mins) => (
+                {(tournament?.sportType === 'BADMINTON'
+                  ? [20, 30, 45, 60]
+                  : tournament?.sportType === 'VOLLEYBALL'
+                    ? [45, 60, 75, 90]
+                    : [40, 50, 60, 70]
+                ).map((mins) => (
                   <button
                     key={mins}
                     type="button"
@@ -1196,7 +1328,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                       : 'bg-white border-indigo-200 text-indigo-800 hover:bg-indigo-100'
                       }`}
                   >
-                    {mins}p (2×{Math.floor(mins / 2)}p)
+                    {sportMeta.isSetSport ? `${mins}p / trận` : `${mins}p (2×${Math.floor(mins / 2)}p)`}
                   </button>
                 ))}
               </div>
@@ -1213,7 +1345,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-600 block mb-1">Nghỉ giữa hiệp (phút)</label>
+                  <label className="text-[10px] text-slate-600 block mb-1">
+                    {sportMeta.isSetSport ? 'Nghỉ giữa set (phút)' : 'Nghỉ giữa hiệp (phút)'}
+                  </label>
                   <input
                     type="number"
                     min={0}
@@ -1538,7 +1672,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             <span>
               {isSingleLeague
                 ? 'Chọn Nhanh Theo Vòng Đấu (Vòng Tròn 1 Lượt)'
-                : 'Chọn Nhanh Giai Đoạn Thi Đấu (Lịch 1 Ngày • 4 Sân)'}
+                : isDirectKnockout
+                  ? 'Chọn Nhanh Theo Vòng Loại Trực Tiếp'
+                  : 'Chọn Nhanh Giai Đoạn Thi Đấu (Lịch 1 Ngày • 4 Sân)'}
             </span>
           </div>
           {(filterRound !== 'ALL' || filterRoundNum !== 'ALL' || filterTeamId !== 'ALL' || filterTimeSlot !== 'ALL' || filterDate !== 'ALL') && (
@@ -1587,6 +1723,34 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 Vòng {rn}
               </button>
             ))
+          ) : isDirectKnockout ? (
+            (
+              [
+                { key: 'ROUND_OF_64', label: 'Vòng 1/32' },
+                { key: 'ROUND_OF_32', label: 'Vòng 1/16' },
+                { key: 'ROUND_OF_16', label: 'Vòng 1/8' },
+                { key: 'QUARTER_FINAL', label: '⚡ Tứ Kết' },
+                { key: 'SEMI_FINAL', label: '🔥 Bán Kết' },
+                { key: 'THIRD_PLACE', label: '🥉 Tranh Hạng 3' },
+                { key: 'FINAL', label: '🏆 Chung Kết' },
+              ] as const
+            )
+              .filter((r) => matches.some((m) => m.round === r.key))
+              .map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => {
+                    setFilterRound(filterRound === r.key ? 'ALL' : r.key);
+                    setFilterTimeSlot('ALL');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 shrink-0 ${filterRound === r.key
+                    ? 'bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-600 text-white shadow-md shadow-blue-500/20'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                    }`}
+                >
+                  <span>{r.label}</span>
+                </button>
+              ))
           ) : (
             <>
               <button
@@ -1768,7 +1932,14 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 className="bg-slate-50 border border-slate-300 text-slate-800 rounded-xl px-3 py-1.5 font-medium cursor-pointer hover:border-blue-400 focus:outline-none focus:bg-white transition-colors"
               >
                 <option value="ALL">🏆 Tất Cả Vòng Đấu</option>
-                <option value="GROUP">Vòng Bảng</option>
+                {!isDirectKnockout && <option value="GROUP">Vòng Bảng</option>}
+                {isDirectKnockout && (
+                  <>
+                    <option value="ROUND_OF_64">Vòng 1/32 (64 đội)</option>
+                    <option value="ROUND_OF_32">Vòng 1/16 (32 đội)</option>
+                    <option value="ROUND_OF_16">Vòng 1/8 (16 đội)</option>
+                  </>
+                )}
                 <option value="QUARTER_FINAL">Vòng Tứ Kết</option>
                 <option value="SEMI_FINAL">Vòng Bán Kết</option>
                 <option value="THIRD_PLACE">Tranh Hạng 3</option>
@@ -1911,7 +2082,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     return (
                       <React.Fragment key={slotTime}>
                         {/* Mốc Nghỉ Trưa & Tổng Hợp BXH Vòng Bảng (Chỉ áp dụng cho thể thức 1 ngày GROUP_KNOCKOUT) */}
-                        {!isSingleLeague && slotTime === '15:00' && (
+                        {!usesDynamicSchedulePanel && slotTime === '15:00' && (
                           <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/70 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs my-2">
                             <div className="flex items-center gap-3">
                               <div className="p-2.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-700">
@@ -1938,8 +2109,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                           </div>
                         )}
 
-                        {/* Nghỉ 10 phút trước Bán Kết */}
-                        {!isSingleLeague && slotTime === '15:55' && (
+                        {/* Nghỉ 10 phút trước Bán Kết (Chỉ áp dụng cho thể thức 1 ngày GROUP_KNOCKOUT) */}
+                        {formatType === 'GROUP_KNOCKOUT' && slotTime === '15:55' && (
                           <div className="p-3.5 sm:p-4 rounded-2xl bg-sky-50/70 border border-sky-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs my-2">
                             <div className="flex items-center gap-3">
                               <div className="p-2 rounded-xl bg-sky-100 border border-sky-300 text-blue-700">
@@ -1961,7 +2132,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                         )}
 
                         {/* Nghỉ 10 phút trước Chung Kết & Tranh 3 */}
-                        {!isSingleLeague && slotTime === '16:50' && (
+                        {formatType === 'GROUP_KNOCKOUT' && slotTime === '16:50' && (
                           <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-50/70 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs my-2">
                             <div className="flex items-center gap-3">
                               <div className="p-2 rounded-xl bg-amber-100 border border-amber-300 text-amber-800">
@@ -2023,7 +2194,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                         </div>
 
                         {/* Mốc Lễ Bế Mạc & Trao Cúp Vô Địch (Sau Ca Chung Kết 16:50) */}
-                        {!isSingleLeague && slotTime === '16:50' && (
+                        {formatType === 'GROUP_KNOCKOUT' && slotTime === '16:50' && (
                           <div className="p-4 sm:p-5 rounded-2xl border border-amber-200 bg-amber-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs mt-4">
                             <div className="flex items-center gap-3">
                               <div className="w-14 h-14 rounded-xl overflow-hidden border border-amber-300 shadow-xs shrink-0">
@@ -2218,7 +2389,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   <span>Giờ Thi Đấu</span>
                 </label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {(isSingleLeague
+                  {(usesDynamicSchedulePanel
                     ? Array.from(new Set([...scheduleConfig.timeSlots, '07:00', '08:20', '15:30', '16:50', '17:30', '18:50']))
                     : ['06:30', '07:10', '07:50', '08:30', '09:10', '09:50', '15:00', '15:55', '16:50']
                   ).map((preset) => (

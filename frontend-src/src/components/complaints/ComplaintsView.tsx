@@ -220,7 +220,6 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
                 <Clock className="w-3.5 h-3.5" />
                 CỔNG KHIẾU NẠI 15 PHÚT SAU TRẬN ĐẤU
               </span>
-              <span className="text-xs text-slate-500 font-medium">Quy định Điều 17</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-slate-900">
               Quyền Khiếu Nại Của Các Đội Bóng
@@ -444,7 +443,7 @@ export const ComplaintsView: React.FC<ComplaintsViewProps> = ({
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
                   <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>
-                    Trận đấu <strong>{selectedMatchForComplaint.roundLabel}</strong> không có sự tham gia của đội bạn ({myTeam?.name}). Theo Điều 17 Điều lệ giải, chỉ 2 đội trực tiếp thi đấu mới được gửi khiếu nại.
+                    Trận đấu <strong>{selectedMatchForComplaint.roundLabel}</strong> không có sự tham gia của đội bạn ({myTeam?.name}). Chỉ 2 đội trực tiếp thi đấu mới được gửi khiếu nại.
                   </span>
                 </div>
               )}

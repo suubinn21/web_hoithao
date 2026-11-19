@@ -99,6 +99,14 @@ function getDb() {
         ], 500);
     }
 
+    if (!class_exists('PDO') || !extension_loaded('pdo_mysql')) {
+        jsonResponse([
+            'ok' => false,
+            'code' => 'PDO_MYSQL_MISSING',
+            'error' => 'Máy chủ PHP chưa bật extension pdo_mysql (kiểm tra trong DirectAdmin -> Cài đặt PHP). PHP hiện tại: ' . PHP_VERSION,
+        ], 500);
+    }
+
     $dsn = sprintf(
         'mysql:host=%s;port=%s;dbname=%s;charset=%s',
         DB_HOST,
@@ -108,11 +116,15 @@ function getDb() {
     );
 
     try {
-        $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+        $pdoOptions = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-        ]);
+        ];
+        if (defined('PDO::MYSQL_ATTR_USE_BUFFERED_QUERY')) {
+            $pdoOptions[PDO::MYSQL_ATTR_USE_BUFFERED_QUERY] = true;
+        }
+        $pdo = new PDO($dsn, DB_USER, DB_PASS, $pdoOptions);
         $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
         return $pdo;
     } catch (PDOException $e) {
@@ -182,6 +194,7 @@ function currentSessionUser($pdo) {
     $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ? AND is_active = 1 LIMIT 1');
     $stmt->execute([$_SESSION['user_id']]);
     $user = $stmt->fetch();
+    $stmt->closeCursor();
     if (!$user) {
         $_SESSION = [];
         return null;

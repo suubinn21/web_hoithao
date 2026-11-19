@@ -706,10 +706,11 @@ export class StorageService {
   static cleanExcessGroupsData(tournament: Tournament): { teams: Team[]; matches: Match[] } {
     if (!this.isClient) return { teams: [], matches: [] };
     if (!tournament || !tournament.id) return { teams: [], matches: [] };
-    const isSingleLeague = tournament.formatType === 'SINGLE_LEAGUE' || (tournament.numberOfGroups || 1) === 1;
-    const validGroups = getGroupLetters(tournament.numberOfGroups || (isSingleLeague ? 1 : 4));
+    const isSingleLeague = tournament.formatType === 'SINGLE_LEAGUE';
+    const isDirectKnockout = tournament.formatType === 'KNOCKOUT';
+    const validGroups = getGroupLetters(tournament.numberOfGroups || (isSingleLeague || isDirectKnockout ? 1 : 4));
     const teams = this.getTeams();
-    const cleanedTeams = isSingleLeague
+    const cleanedTeams = isSingleLeague || isDirectKnockout
       ? teams.map((t) => ({ ...t, group: t.group || 'A' }))
       : teams.filter((t) => !t.group || validGroups.includes(t.group));
     const validTeamIds = new Set(cleanedTeams.map((t) => t.id));
@@ -717,6 +718,7 @@ export class StorageService {
     const matches = this.getMatches();
     const cleanedMatches = matches
       .filter((m) => {
+        if (isDirectKnockout) return m.round !== 'GROUP';
         if (m.round !== 'GROUP') return !isSingleLeague;
         if (!isSingleLeague && m.group && !validGroups.includes(m.group)) return false;
         if (m.homeTeamId && !validTeamIds.has(m.homeTeamId)) return false;

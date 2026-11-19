@@ -36,19 +36,22 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
   tournament,
   onTournamentUpdate,
 }) => {
-  const isSingleLeague = (tournament?.formatType || 'SINGLE_LEAGUE') === 'SINGLE_LEAGUE';
+  const formatType = tournament?.formatType || 'SINGLE_LEAGUE';
+  const isSingleLeague = formatType === 'SINGLE_LEAGUE';
+  const isDirectKnockout = formatType === 'KNOCKOUT';
+  const isSeedOrderMode = isSingleLeague || isDirectKnockout;
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
   const [currentRevealedTeam, setCurrentRevealedTeam] = useState<Team | null>(null);
   const [revealedGroup, setRevealedGroup] = useState<string | null>(null);
 
   // Group config states
-  const [numberOfGroups, setNumberOfGroups] = useState<number>(tournament?.numberOfGroups || (isSingleLeague ? 1 : 4));
-  const [teamsPerGroup, setTeamsPerGroup] = useState<number>(tournament?.teamsPerGroup || (isSingleLeague ? 12 : 4));
+  const [numberOfGroups, setNumberOfGroups] = useState<number>(tournament?.numberOfGroups || (isSeedOrderMode ? 1 : 4));
+  const [teamsPerGroup, setTeamsPerGroup] = useState<number>(tournament?.teamsPerGroup || (isSeedOrderMode ? 12 : 4));
   const [showConfigPanel, setShowConfigPanel] = useState<boolean>(false);
 
-  const groups = getGroupLetters(isSingleLeague ? 1 : (tournament?.numberOfGroups || numberOfGroups || 4));
-  const groupCapacity = isSingleLeague ? (tournament?.maxTeams || teams.length || 12) : (tournament?.teamsPerGroup || teamsPerGroup || 4);
+  const groups = getGroupLetters(isSeedOrderMode ? 1 : (tournament?.numberOfGroups || numberOfGroups || 4));
+  const groupCapacity = isSeedOrderMode ? (tournament?.maxTeams || teams.length || 12) : (tournament?.teamsPerGroup || teamsPerGroup || 4);
 
   // Swap modal state
   const [swapModalOpen, setSwapModalOpen] = useState(false);
@@ -60,7 +63,7 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
   const [pendingTargetGroup, setPendingTargetGroup] = useState<string>('A');
 
   const canManage = currentRole === 'SUPER_ADMIN' || currentRole === 'ORGANIZER';
-  const unassignedTeams = isSingleLeague ? [] : teams.filter((t) => !t.group);
+  const unassignedTeams = isSeedOrderMode ? [] : teams.filter((t) => !t.group);
 
   const handleSaveGroupConfig = () => {
     if (tournament && onTournamentUpdate) {
@@ -105,12 +108,16 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
     // Shuffle teams
     const shuffled = [...teams].sort(() => Math.random() - 0.5);
 
-    if (isSingleLeague) {
+    if (isSeedOrderMode) {
+      const nextPow2 = Math.pow(2, Math.ceil(Math.log2(Math.max(2, shuffled.length))));
+      const byeCount = Math.max(0, nextPow2 - shuffled.length);
       const orderedResult: Team[] = [];
       for (let i = 0; i < shuffled.length; i++) {
         const currentTeam = shuffled[i];
         setCurrentRevealedTeam(currentTeam);
-        setRevealedGroup(`Mã #${i + 1}`);
+        setRevealedGroup(
+          isDirectKnockout && i < byeCount ? `Hạt giống #${i + 1} (Miễn V1)` : `Mã #${i + 1}`
+        );
         SoundFX.playDrawReveal();
         orderedResult.push({ ...currentTeam, group: 'A' });
         await new Promise((resolve) => setTimeout(resolve, 220));
@@ -132,9 +139,11 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
       StorageService.logAction(
         currentRole,
         currentRole,
-        'BỐC THĂM THỨ TỰ VÒNG TRÒN 1 LƯỢT',
+        isDirectKnockout ? 'BỐC THĂM NHÁNH LOẠI TRỰC TIẾP' : 'BỐC THĂM THỨ TỰ VÒNG TRÒN 1 LƯỢT',
         `${orderedResult.length} Đội bóng`,
-        `Bốc thăm ngẫu nhiên thứ tự hạt giống #1 đến #${orderedResult.length} để xếp cặp vòng tròn.`
+        isDirectKnockout
+          ? `Bốc thăm thứ tự hạt giống #1 đến #${orderedResult.length} vào nhánh ${nextPow2} đội (${byeCount} suất BYE miễn vòng 1).`
+          : `Bốc thăm ngẫu nhiên thứ tự hạt giống #1 đến #${orderedResult.length} để xếp cặp vòng tròn.`
       );
       return;
     }
@@ -142,7 +151,7 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
     const updated = [...teams];
 
     for (let i = 0; i < shuffled.length; i++) {
-      const assignedGroup = groups[Math.floor(i / groupCapacity) % groups.length];
+      const assignedGroup = groups[i % groups.length];
       const currentTeam = shuffled[i];
 
       setCurrentRevealedTeam(currentTeam);
@@ -334,7 +343,7 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
             <div className="flex items-center gap-2 mb-2">
               <span className="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5">
                 <Dices className="w-3.5 h-3.5" />
-                BỐC THĂM &amp; CHIA BẢNG ĐẤU (ĐIỀU 21)
+                BỐC THĂM &amp; CHIA BẢNG ĐẤU
               </span>
               {isLocked ? (
                 <span className="bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
@@ -350,19 +359,23 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
               {isSingleLeague
                 ? `Bốc Thăm Mã Số Vòng Tròn 1 Lượt (#1 – #${teams.length || 12})`
-                : 'Studio Điều Hành & Hiệu Chỉnh Bảng Đấu'}
+                : isDirectKnockout
+                  ? `Bốc Thăm Nhánh Loại Trực Tiếp (#1 – #${teams.length || 8})`
+                  : 'Studio Điều Hành & Hiệu Chỉnh Bảng Đấu'}
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 mt-1 max-w-2xl">
               {isSingleLeague
                 ? 'Giải đấu gồm 1 bảng duy nhất đá vòng tròn 1 lượt. Bốc thăm ngẫu nhiên mã số (#1..#12) để xác định cặp đấu và sân thi đấu qua các vòng.'
-                : 'Hỗ trợ đầy đủ: Bốc thăm tự động, chuyển bảng trực tiếp trên từng đội, hoán đổi vị trí 2 đội hoặc đặt lại bảng đấu.'}
+                : isDirectKnockout
+                  ? `Xếp ngẫu nhiên thứ tự hạt giống #1..#${teams.length || 8} vào nhánh Loại trực tiếp. Nếu số đội lẻ sẽ tự động cấp BYE (miễn vòng 1) cho hạt giống cao nhất.`
+                  : 'Hỗ trợ đầy đủ: Bốc thăm tự động, chuyển bảng trực tiếp trên từng đội, hoán đổi vị trí 2 đội hoặc đặt lại bảng đấu.'}
             </p>
           </div>
 
           {/* Action Toolbar */}
           {canManage && (
             <div className="flex flex-wrap items-center gap-2">
-              {!isSingleLeague && (
+              {!isSeedOrderMode && (
                 <button
                   onClick={() => setShowConfigPanel(!showConfigPanel)}
                   disabled={isLocked}
@@ -385,7 +398,9 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
                     ? 'Đang Quay Cầu...'
                     : isSingleLeague
                       ? 'Bốc Thăm Mã Số Tự Động'
-                      : 'Bốc Thăm Tự Động'}
+                      : isDirectKnockout
+                        ? 'Bốc Thăm Nhánh Tự Động'
+                        : 'Bốc Thăm Tự Động'}
                 </span>
               </button>
 
@@ -399,7 +414,7 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
                 <span>Hoán Đổi 2 Đội</span>
               </button>
 
-              {!isSingleLeague && (
+              {!isSeedOrderMode && (
                 <button
                   onClick={handleResetDraw}
                   disabled={isLocked}
@@ -577,9 +592,11 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
       )}
 
       {/* Dynamic Groups Grid with Direct Group Editing */}
-      <div className={isSingleLeague ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'}>
+      <div className={isSeedOrderMode ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'}>
         {groups.map((grp) => {
-          const groupTeams = isSingleLeague ? teams : teams.filter((t) => t.group === grp);
+          const groupTeams = isSeedOrderMode ? teams : teams.filter((t) => t.group === grp);
+          const nextPow2 = Math.pow(2, Math.ceil(Math.log2(Math.max(2, groupTeams.length))));
+          const byeCount = isDirectKnockout && groupTeams.length >= 2 ? Math.max(0, nextPow2 - groupTeams.length) : 0;
 
           const groupColorPalette: Record<string, { header: string; border: string }> = {
             A: { header: 'from-blue-600 to-sky-600', border: 'border-blue-200' },
@@ -604,10 +621,20 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
               >
                 <div>
                   <h3 className="text-xl font-black tracking-tight">
-                    {isSingleLeague ? 'DANH SÁCH MÃ SỐ VÒNG TRÒN 1 LƯỢT' : `BẢNG ${grp}`}
+                    {isSingleLeague
+                      ? 'DANH SÁCH MÃ SỐ VÒNG TRÒN 1 LƯỢT'
+                      : isDirectKnockout
+                        ? 'DANH SÁCH HẠT GIỐNG NHÁNH LOẠI TRỰC TIẾP'
+                        : `BẢNG ${grp}`}
                   </h3>
                   <span className="text-[11px] opacity-90">
-                    {isSingleLeague ? 'Mỗi đội thi đấu 1 lượt gặp tất cả các đội còn lại' : `${groupCapacity} Đội bóng vòng bảng`}
+                    {isSingleLeague
+                      ? 'Mỗi đội thi đấu 1 lượt gặp tất cả các đội còn lại'
+                      : isDirectKnockout
+                        ? byeCount > 0
+                          ? `Nhánh ${nextPow2} • ${byeCount} suất BYE miễn vòng 1 cho hạt giống đầu`
+                          : `Nhánh chuẩn ${nextPow2} đội đấu loại trực tiếp`
+                        : `${groupCapacity} Đội bóng vòng bảng`}
                   </span>
                 </div>
                 <span className="text-xs font-black bg-white/20 text-white px-2.5 py-1 rounded-full font-mono">
@@ -616,13 +643,13 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
               </div>
 
               {/* Teams in Group */}
-              <div className={isSingleLeague ? 'p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3' : 'p-4 space-y-3 flex-1'}>
+              <div className={isSeedOrderMode ? 'p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3' : 'p-4 space-y-3 flex-1'}>
                 {groupTeams.map((t, idx) => (
                   <div
                     key={t.id}
                     className="p-3 rounded-2xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition-all flex flex-col gap-2"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 truncate">
                         <span className="w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-[11px] font-mono font-bold text-slate-700 flex-shrink-0">
                           {idx + 1}
@@ -635,15 +662,25 @@ export const DrawStudio: React.FC<DrawStudioProps> = ({
                         </div>
                       </div>
 
-                      <div
-                        className="w-3.5 h-3.5 rounded-full border flex-shrink-0 shadow-xs"
-                        style={{ backgroundColor: t.primaryColor, borderColor: t.secondaryColor }}
-                        title={`Màu áo: ${t.primaryColor}`}
-                      ></div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {isDirectKnockout && idx < byeCount && (
+                          <span
+                            className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300"
+                            title="Hạt giống được miễn thi đấu Vòng 1 (BYE)"
+                          >
+                            BYE V1
+                          </span>
+                        )}
+                        <div
+                          className="w-3.5 h-3.5 rounded-full border flex-shrink-0 shadow-xs"
+                          style={{ backgroundColor: t.primaryColor, borderColor: t.secondaryColor }}
+                          title={`Màu áo: ${t.primaryColor}`}
+                        ></div>
+                      </div>
                     </div>
 
                     {/* Direct Quick Group Changer */}
-                    {canManage && !isLocked && (
+                    {canManage && !isLocked && !isSeedOrderMode && (
                       <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-[11px]">
                         <span className="text-slate-500">Chuyển bảng:</span>
                         <select

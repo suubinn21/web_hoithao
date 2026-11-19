@@ -17,3 +17,6 @@ frontend-src/out/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+
+# Deployment package (contains hosting DB credentials)
+deploy_public_html.zip

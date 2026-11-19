@@ -124,10 +124,12 @@ switch ($action) {
                 'version' => (int)$row['version'],
             ];
         }
+        $stmt->closeCursor();
         jsonResponse([
             'ok' => true,
             'tournaments' => $list,
             'stats' => empty($stats) ? new stdClass() : $stats,
+            'serverTimeMs' => (int)round(microtime(true) * 1000),
         ]);
         break;
 
@@ -143,16 +145,19 @@ switch ($action) {
         $stmt = $pdo->prepare('SELECT * FROM tournaments WHERE id = ? LIMIT 1');
         $stmt->execute([$id]);
         $row = $stmt->fetch();
+        $stmt->closeCursor();
         if (!$row) {
             jsonResponse(['ok' => false, 'code' => 'NOT_FOUND', 'error' => 'Giải đấu không tồn tại hoặc đã bị xóa.'], 404);
         }
 
         $currentVersion = (int)$row['version'];
+        $serverTimeMs = (int)round(microtime(true) * 1000);
         if ($sinceVersion > 0 && $sinceVersion === $currentVersion) {
             jsonResponse([
                 'ok' => true,
                 'unchanged' => true,
                 'version' => $currentVersion,
+                'serverTimeMs' => $serverTimeMs,
             ]);
         }
 
@@ -161,6 +166,7 @@ switch ($action) {
             'ok' => true,
             'unchanged' => false,
             'version' => $currentVersion,
+            'serverTimeMs' => $serverTimeMs,
             'data' => buildTournamentPayload($row, $user),
         ]);
         break;
@@ -293,7 +299,7 @@ switch ($action) {
             $version,
         ]);
 
-        jsonResponse(['ok' => true, 'id' => $id, 'version' => $version]);
+        jsonResponse(['ok' => true, 'id' => $id, 'version' => $version, 'serverTimeMs' => $version]);
         break;
 
     case 'save':
@@ -315,6 +321,7 @@ switch ($action) {
             $sel = $pdo->prepare('SELECT * FROM tournaments WHERE id = ? FOR UPDATE');
             $sel->execute([$id]);
             $row = $sel->fetch();
+            $sel->closeCursor();
             if (!$row) {
                 $pdo->rollBack();
                 jsonResponse(['ok' => false, 'error' => 'Giải đấu không tồn tại trên CSDL!'], 404);
@@ -586,7 +593,7 @@ switch ($action) {
             ]);
 
             $pdo->commit();
-            jsonResponse(['ok' => true, 'version' => $version]);
+            jsonResponse(['ok' => true, 'version' => $version, 'serverTimeMs' => $version]);
         } catch (Exception $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();

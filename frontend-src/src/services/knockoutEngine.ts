@@ -35,6 +35,55 @@ export class KnockoutEngine {
    * Syncs and generates knockout fixtures based on current group stage standings.
    */
   static generateOrUpdateBracket(teams: Team[], matches: Match[]): Match[] {
+    const getWinnerId = (m?: Match): string | undefined => {
+      if (!m || m.status !== 'FINISHED') return undefined;
+      if (m.winnerTeamId) return m.winnerTeamId;
+      if (m.homeScore > m.awayScore) return m.homeTeamId;
+      if (m.awayScore > m.homeScore) return m.awayTeamId;
+      if (m.penaltyShootout) {
+        return m.penaltyShootout.homeScore > m.penaltyShootout.awayScore ? m.homeTeamId : m.awayTeamId;
+      }
+      return undefined;
+    };
+
+    const getLoserId = (m?: Match): string | undefined => {
+      if (!m || m.status !== 'FINISHED') return undefined;
+      const winner = getWinnerId(m);
+      if (!winner) return undefined;
+      return m.homeTeamId === winner ? m.awayTeamId : m.homeTeamId;
+    };
+
+    // Dynamic single-elimination bracket (supports 2..64 teams, odd/even with BYEs via nextMatchId)
+    const hasDynamicBracket = matches.some((m) => Boolean(m.nextMatchId || m.thirdPlaceMatchId));
+    if (hasDynamicBracket) {
+      const updatedMatches = matches.map((m) => ({ ...m }));
+      const byId = new Map(updatedMatches.map((m) => [m.id, m]));
+      const ordered = [...updatedMatches].sort(
+        (a, b) => (a.bracketStage ?? 0) - (b.bracketStage ?? 0) || (a.matchNumber || 0) - (b.matchNumber || 0)
+      );
+
+      for (const m of ordered) {
+        const winnerId = getWinnerId(m);
+        if (m.nextMatchId) {
+          const target = byId.get(m.nextMatchId);
+          if (target && !target.isCustomMatchup) {
+            if (m.nextSlot === 'HOME') target.homeTeamId = winnerId || '';
+            else target.awayTeamId = winnerId || '';
+          }
+        }
+        if (m.thirdPlaceMatchId) {
+          const tpTarget = byId.get(m.thirdPlaceMatchId);
+          const loserId = getLoserId(m);
+          if (tpTarget && !tpTarget.isCustomMatchup) {
+            if (m.thirdPlaceSlot === 'HOME') tpTarget.homeTeamId = loserId || '';
+            else tpTarget.awayTeamId = loserId || '';
+          }
+        }
+      }
+
+      return updatedMatches;
+    }
+
     const updatedMatches = [...matches];
 
     // Compute standings for all groups (only assign seeds once a group has started playing)
@@ -89,42 +138,45 @@ export class KnockoutEngine {
       if (team2C) m28.awayTeamId = team2C;
     }
 
-    // Helper for knockout match winner
-    const getWinnerId = (m?: Match): string | undefined => {
-      if (!m || m.status !== 'FINISHED') return undefined;
-      if (m.winnerTeamId) return m.winnerTeamId;
-      if (m.homeScore > m.awayScore) return m.homeTeamId;
-      if (m.awayScore > m.homeScore) return m.awayTeamId;
-      if (m.penaltyShootout) {
-        return m.penaltyShootout.homeScore > m.penaltyShootout.awayScore ? m.homeTeamId : m.awayTeamId;
-      }
-      return undefined;
-    };
-
-    const getLoserId = (m?: Match): string | undefined => {
-      if (!m || m.status !== 'FINISHED') return undefined;
-      const winner = getWinnerId(m);
-      if (!winner) return undefined;
-      return m.homeTeamId === winner ? m.awayTeamId : m.homeTeamId;
-    };
-
     // 2. Semi Finals
-    // BK1: Win TK1 vs Win TK2 (Match 29)
+    // BK1: Win TK1 vs Win TK2 (or 1A vs 2B / 1A vs 4A when no Quarterfinals exist)
     const m29 = getMatch('M29');
     const winTK1 = getWinnerId(m25);
     const winTK2 = getWinnerId(m26);
     if (m29 && !m29.isCustomMatchup) {
-      m29.homeTeamId = winTK1 || '';
-      m29.awayTeamId = winTK2 || '';
+      if (m25 || m26) {
+        m29.homeTeamId = winTK1 || '';
+        m29.awayTeamId = winTK2 || '';
+      } else {
+        const hasGroupB = standingsB.length > 0;
+        if (hasGroupB) {
+          if (team1A) m29.homeTeamId = team1A;
+          if (team2B) m29.awayTeamId = team2B;
+        } else if (hasPlayedA) {
+          if (standingsA[0]?.teamId) m29.homeTeamId = standingsA[0].teamId;
+          if (standingsA[3]?.teamId) m29.awayTeamId = standingsA[3].teamId;
+        }
+      }
     }
 
-    // BK2: Win TK3 vs Win TK4 (Match 30)
+    // BK2: Win TK3 vs Win TK4 (or 1B vs 2A / 2A vs 3A when no Quarterfinals exist)
     const m30 = getMatch('M30');
     const winTK3 = getWinnerId(m27);
     const winTK4 = getWinnerId(m28);
     if (m30 && !m30.isCustomMatchup) {
-      m30.homeTeamId = winTK3 || '';
-      m30.awayTeamId = winTK4 || '';
+      if (m27 || m28) {
+        m30.homeTeamId = winTK3 || '';
+        m30.awayTeamId = winTK4 || '';
+      } else {
+        const hasGroupB = standingsB.length > 0;
+        if (hasGroupB) {
+          if (team1B) m30.homeTeamId = team1B;
+          if (team2A) m30.awayTeamId = team2A;
+        } else if (hasPlayedA) {
+          if (standingsA[1]?.teamId) m30.homeTeamId = standingsA[1].teamId;
+          if (standingsA[2]?.teamId) m30.awayTeamId = standingsA[2].teamId;
+        }
+      }
     }
 
     // 3. Third Place: Lose BK1 vs Lose BK2 (Match 31)
@@ -181,7 +233,7 @@ export class KnockoutEngine {
       'KẾT QUẢ LUÂN LƯU 6M',
       `Trận ${match.roundLabel}`,
       `Tỷ số luân lưu: ${homePenScore} - ${awayPenScore}. Đội thắng: ${winnerId}`,
-      'Phân định thắng thua vòng loại trực tiếp theo Điều 8'
+      'Phân định thắng thua vòng loại trực tiếp'
     );
   }
 }
